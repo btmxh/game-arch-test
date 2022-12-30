@@ -21,6 +21,7 @@ pub enum SendMsg {
 pub enum RecvMsg {
     Dummy,
     SetVSync(SwapInterval),
+    Resize(PhysicalSize<NonZeroU32>),
 }
 pub struct Server {
     pub base: BaseGameServer<SendMsg, RecvMsg>,
@@ -97,16 +98,27 @@ impl Server {
             .receive_all_pending(false)
             .ok_or_else(|| anyhow::format_err!("thread runner channel was unexpectedly closed"))?;
         let mut vsync = None;
+        let mut resize = None;
         for message in messages {
             match message {
                 RecvMsg::SetVSync(swap_interval) => vsync = Some(swap_interval),
+                RecvMsg::Resize(new_size) => resize = Some(new_size),
                 _ => {}
             }
         }
 
         if let Some(swap_interval) = vsync {
-            let result = self.set_swap_interval(swap_interval).ok().map(|_| swap_interval);
+            println!("{:?}", swap_interval);
+            let result = self
+                .set_swap_interval(swap_interval)
+                .ok()
+                .map(|_| swap_interval);
             self.base.send(SendMsg::VSyncSet(result))?;
+        }
+
+        if let Some(new_size) = resize {
+            self.gl_surface
+                .resize(&self.gl_context, new_size.width, new_size.height);
         }
 
         Ok(())
@@ -131,7 +143,7 @@ impl GameServer for Server {
     }
 
     fn run(&mut self) -> anyhow::Result<()> {
-        self.process_messages();
+        self.process_messages()?;
         unsafe {
             gl::ClearColor(0.0, 0.0, 0.2, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
@@ -186,6 +198,7 @@ impl SendGameServer for SendServer {
 #[async_trait]
 pub trait DrawServerChannel {
     async fn set_vsync(&mut self, interval: SwapInterval) -> anyhow::Result<SwapInterval>;
+    fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()>;
 }
 
 #[async_trait]
@@ -194,15 +207,20 @@ impl DrawServerChannel for ServerChannel<SendMsg, RecvMsg> {
         self.send(RecvMsg::SetVSync(interval))?;
         if let SendMsg::VSyncSet(result) = self.recv()? {
             match result {
-                Some(interval) => {},
-                Some(other_interval) => 
-                log::warn!("VSync swap interval '{:?}' not supported, falling back to swap interval '{:?}'", interval, result),
+                Some(other_interval) if other_interval != interval => {
+                    log::warn!("VSync swap interval '{:?}' not supported, falling back to swap interval '{:?}'", interval, result)
+                }
                 None => log::error!("Toggling VSync failed"),
+                _ => {}
             }
             result.ok_or_else(|| anyhow::format_err!("failed to set swap interval"))
         } else {
             bail!("unexpected response message from thread")
         }
+    }
+
+    fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()> {
+        self.send(RecvMsg::Resize(size))
     }
 }
 

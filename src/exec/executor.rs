@@ -56,14 +56,22 @@ impl GameServerExecutor {
         to: RunnerId,
         kind: ServerKind,
     ) -> anyhow::Result<()> {
-        let server = self.move_server_from(from, kind).with_context(|| {
-            format!(
-                "unable to move {:?} server from runner id {}",
-                kind, from
-            )
-        })?;
+        let server = self
+            .move_server_from(from, kind)
+            .with_context(|| format!("unable to move {:?} server from runner id {}", kind, from))?;
         self.move_server_to(to, server)
             .with_context(|| format!("unable to move {:?} server to runner id {}", kind, to))
+    }
+
+    pub fn set_frequency(&mut self, id: RunnerId, frequency: f64) -> anyhow::Result<()> {
+        match id {
+            MAIN_RUNNER_ID => self.main_runner.base.frequency = frequency,
+            _ => self.thread_runners[usize::from(id)]
+                .as_mut()
+                .ok_or_else(|| anyhow::format_err!("runner {} hasn't been constructed", id))?
+                .set_frequency(frequency)?,
+        }
+        Ok(())
     }
 
     pub fn new(

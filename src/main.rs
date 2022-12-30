@@ -40,9 +40,10 @@ fn main() -> anyhow::Result<()> {
     executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
     executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
     executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
+    executor.set_frequency(0, 1000.0)?;
     let mut vsync = true;
     executor.run(event_loop, move |e| {
-        block_on((|| async {
+        block_on(async {
             match e {
                 Event::WindowEvent {
                     window_id,
@@ -55,7 +56,13 @@ fn main() -> anyhow::Result<()> {
                     window_id,
                     event: WindowEvent::Resized(size),
                 } if display.get_window_id() == window_id => {
-                    // channels.draw.send();
+                    let width = NonZeroU32::new(size.width);
+                    let height = NonZeroU32::new(size.height);
+                    if let Some(width) = width {
+                        if let Some(height) = height {
+                            channels.draw.resize(PhysicalSize { width, height })?;
+                        }
+                    }
                 }
 
                 Event::WindowEvent {
@@ -70,14 +77,14 @@ fn main() -> anyhow::Result<()> {
                                 },
                             ..
                         },
-                } => {
+                } if display.get_window_id() == window_id => {
                     vsync = !vsync;
                     channels
                         .draw
                         .set_vsync(if vsync {
-                            SwapInterval::DontWait
-                        } else {
                             SwapInterval::Wait(NonZeroU32::new(1).unwrap())
+                        } else {
+                            SwapInterval::DontWait
                         })
                         .await?;
                 }
@@ -85,10 +92,6 @@ fn main() -> anyhow::Result<()> {
                 _ => {}
             };
             Ok(())
-        })())
+        })
     });
-}
-
-async fn handle_event() {
-
 }

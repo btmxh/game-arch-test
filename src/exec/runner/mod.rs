@@ -20,6 +20,7 @@ pub enum FromRunnerMsg {
 pub enum ToRunnerMsg {
     RequestServer(ServerKind),
     MoveServer(Box<dyn SendGameServer>),
+    SetFrequency(f64),
     Stop,
 }
 
@@ -80,6 +81,7 @@ impl ThreadRunner {
                         self.send(FromRunnerMsg::MoveServer(server))
                             .expect("thread runner channel was unexpectedly closed");
                     }
+                    ToRunnerMsg::SetFrequency(frequency) => self.base.frequency = frequency,
                 }
             }
 
@@ -125,6 +127,10 @@ impl ThreadRunnerHandle {
 
     pub fn join(self) -> bool {
         self.join_handle.join().is_err()
+    }
+
+    pub fn set_frequency(&self, frequency: f64) -> anyhow::Result<()> {
+        self.send(ToRunnerMsg::SetFrequency(frequency))
     }
 }
 

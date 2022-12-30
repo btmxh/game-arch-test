@@ -6,7 +6,10 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::utils::error::ResultExt;
+use crate::{
+    events::{GameEvent, GameUserEvent},
+    utils::error::ResultExt,
+};
 
 use super::{
     runner::{
@@ -113,9 +116,9 @@ impl GameServerExecutor {
             })
     }
 
-    pub fn run<F>(mut self, event_loop: EventLoop<()>, mut event_handler: F) -> !
+    pub fn run<F>(mut self, event_loop: EventLoop<GameUserEvent>, mut event_handler: F) -> !
     where
-        F: FnMut(Event<()>) -> anyhow::Result<()> + 'static,
+        F: FnMut(GameEvent) -> anyhow::Result<()> + 'static,
     {
         event_loop.run(move |event, _target, control_flow| {
             match *control_flow {
@@ -140,7 +143,7 @@ impl GameServerExecutor {
                         .expect("error running main runner");
                 }
 
-                Event::UserEvent(()) => control_flow.set_exit(),
+                Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
 
                 event => event_handler(event).expect("error handling events"),
             }

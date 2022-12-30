@@ -1,7 +1,7 @@
-use std::{ffi::CString, num::NonZeroU32, time::SystemTime};
+use crate::utils::mpsc::{UnboundedReceiver, UnboundedSender};
+use std::{ffi::CString, num::NonZeroU32};
 
 use anyhow::{bail, Context};
-use async_trait::async_trait;
 use glutin::{
     config::Config,
     context::{ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext},
@@ -11,7 +11,7 @@ use glutin::{
 };
 use winit::dpi::PhysicalSize;
 
-use super::{BaseGameServer, GameServer, SendGameServer, ServerChannel};
+use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
 use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
 
 pub enum SendMsg {
@@ -48,8 +48,8 @@ impl SendServer {
     pub fn new(
         gl_config: Config,
         display: &crate::display::Display,
-    ) -> anyhow::Result<(Self, ServerChannel<SendMsg, RecvMsg>)> {
-        let (base, channels) = BaseGameServer::new();
+    ) -> anyhow::Result<(Self, ServerChannel)> {
+        let (base, sender, receiver) = BaseGameServer::new();
         let gl_display = gl_config.display();
         let context_attribs = ContextAttributesBuilder::new()
             .with_context_api(ContextApi::Gles(None))
@@ -78,7 +78,7 @@ impl SendServer {
                 gl_config,
                 swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
             },
-            channels,
+            ServerChannel { sender, receiver },
         ))
     }
 }
@@ -149,12 +149,6 @@ impl GameServer for Server {
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
         self.gl_surface.swap_buffers(&self.gl_context)?;
-        println!(
-            "{}",
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_secs_f64()
-        );
         Ok(())
     }
 }
@@ -194,16 +188,22 @@ impl SendGameServer for SendServer {
         })
     }
 }
-
-#[async_trait]
-pub trait DrawServerChannel {
-    async fn set_vsync(&mut self, interval: SwapInterval) -> anyhow::Result<SwapInterval>;
-    fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()>;
+pub struct ServerChannel {
+    sender: UnboundedSender<RecvMsg>,
+    receiver: UnboundedReceiver<SendMsg>,
 }
 
-#[async_trait]
-impl DrawServerChannel for ServerChannel<SendMsg, RecvMsg> {
-    async fn set_vsync(&mut self, interval: SwapInterval) -> anyhow::Result<SwapInterval> {
+impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
+    fn sender(&self) -> &UnboundedSender<RecvMsg> {
+        &self.sender
+    }
+    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
+        &mut self.receiver
+    }
+}
+
+impl ServerChannel {
+    pub async fn set_vsync(&mut self, interval: SwapInterval) -> anyhow::Result<SwapInterval> {
         self.send(RecvMsg::SetVSync(interval))?;
         if let SendMsg::VSyncSet(result) = self.recv()? {
             match result {
@@ -219,7 +219,7 @@ impl DrawServerChannel for ServerChannel<SendMsg, RecvMsg> {
         }
     }
 
-    fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()> {
+    pub fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()> {
         self.send(RecvMsg::Resize(size))
     }
 }

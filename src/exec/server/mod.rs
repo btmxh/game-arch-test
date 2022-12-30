@@ -14,15 +14,27 @@ pub struct BaseGameServer<SendMsg, RecvMsg> {
     pub receiver: UnboundedReceiver<RecvMsg>,
 }
 
-pub struct ServerChannel<SendMsg, RecvMsg> {
-    pub sender: UnboundedSender<RecvMsg>,
-    pub receiver: UnboundedReceiver<SendMsg>,
+pub trait GameServerChannel<SendMsg, RecvMsg> {
+    fn sender(&self) -> &UnboundedSender<RecvMsg>;
+    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg>;
+    fn send(&self, message: RecvMsg) -> anyhow::Result<()> {
+        self.sender()
+            .send(message)
+            .map_err(|e| anyhow::format_err!("{}", e))
+            .context("unable to send message to (local) game server")
+    }
+
+    fn recv(&mut self) -> anyhow::Result<SendMsg> {
+        self.receiver().blocking_recv().ok_or_else(|| {
+            anyhow::format_err!("unable to receive message from (local) game server")
+        })
+    }
 }
 
 pub struct ServerChannels {
-    pub audio: ServerChannel<audio::SendMsg, audio::RecvMsg>,
-    pub draw: ServerChannel<draw::SendMsg, draw::RecvMsg>,
-    pub update: ServerChannel<update::SendMsg, update::RecvMsg>,
+    pub audio: audio::ServerChannel,
+    pub draw: draw::ServerChannel,
+    pub update: update::ServerChannel,
 }
 
 impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
@@ -31,21 +43,6 @@ impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
             .send(message)
             .map_err(|e| anyhow::format_err!("{}", e))
             .context("Unable to send message from (local) game server")
-    }
-}
-
-impl<SendMsg, RecvMsg> ServerChannel<SendMsg, RecvMsg> {
-    pub fn send(&self, message: RecvMsg) -> anyhow::Result<()> {
-        self.sender
-            .send(message)
-            .map_err(|e| anyhow::format_err!("{}", e))
-            .context("unable to send message to (local) game server")
-    }
-
-    pub fn recv(&mut self) -> anyhow::Result<SendMsg> {
-        self.receiver.blocking_recv().ok_or_else(|| {
-            anyhow::format_err!("unable to receive message from (local) game server")
-        })
     }
 }
 
@@ -77,7 +74,7 @@ pub trait SendGameServer: Send {
 }
 
 impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
-    pub fn new() -> (Self, ServerChannel<SendMsg, RecvMsg>) {
+    pub fn new() -> (Self, UnboundedSender<RecvMsg>, UnboundedReceiver<SendMsg>) {
         let (send_sender, send_receiver) = mpsc::unbounded_channel();
         let (recv_sender, recv_receiver) = mpsc::unbounded_channel();
         (
@@ -85,10 +82,8 @@ impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
                 receiver: recv_receiver,
                 sender: send_sender,
             },
-            ServerChannel {
-                receiver: send_receiver,
-                sender: recv_sender,
-            },
+            recv_sender,
+            send_receiver,
         )
     }
 }

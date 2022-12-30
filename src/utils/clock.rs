@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 pub trait Clock {
     fn now(&self) -> f64;
@@ -32,4 +32,11 @@ impl Clock for SteadyClock {
             .saturating_duration_since(self.start)
             .as_secs_f64()
     }
+}
+
+pub fn debug_get_time() -> f64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
 }

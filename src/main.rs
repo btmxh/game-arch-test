@@ -1,7 +1,8 @@
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, time::Duration};
 
 use anyhow::Context;
 use display::Display;
+use events::GameUserEvent;
 use exec::{
     executor::GameServerExecutor,
     runner::MAIN_RUNNER_ID,
@@ -12,24 +13,25 @@ use glutin::surface::SwapInterval;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::EventLoop,
+    event_loop::EventLoopBuilder,
 };
 
-use crate::exec::server::draw::DrawServerChannel;
+use crate::utils::clock::debug_get_time;
 
 pub mod display;
+pub mod events;
 pub mod exec;
 pub mod utils;
 
 fn main() -> anyhow::Result<()> {
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoopBuilder::<GameUserEvent>::with_user_event().build();
     let (display, gl_config) =
         Display::new_display(&event_loop, PhysicalSize::new(1280, 720), "hello")
             .context("unable to create main display")?;
     let (draw, draw_channels) =
         draw::SendServer::new(gl_config, &display).context("unable to initialize draw server")?;
     let (audio, audio_channels) = audio::Server::new();
-    let (update, update_channels) = update::Server::new();
+    let (update, update_channels) = update::Server::new(event_loop.create_proxy());
     let mut executor = GameServerExecutor::new(audio, draw, update)?;
     let event_loop_proxy = event_loop.create_proxy();
     let mut channels = ServerChannels {
@@ -49,7 +51,7 @@ fn main() -> anyhow::Result<()> {
                     window_id,
                     event: WindowEvent::CloseRequested,
                 } if display.get_window_id() == window_id => {
-                    event_loop_proxy.send_event(())?;
+                    event_loop_proxy.send_event(GameUserEvent::Exit)?;
                 }
 
                 Event::WindowEvent {
@@ -87,6 +89,30 @@ fn main() -> anyhow::Result<()> {
                             SwapInterval::DontWait
                         })
                         .await?;
+                }
+
+                Event::WindowEvent {
+                    window_id,
+                    event:
+                        WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Released,
+                                    virtual_keycode: Some(VirtualKeyCode::E),
+                                    ..
+                                },
+                            ..
+                        },
+                } if display.get_window_id() == window_id => {
+                    let time = debug_get_time();
+                    println!("{}", time);
+                    channels.update.set_timeout(Duration::from_secs(5), move || {
+                        println!("hello {}", debug_get_time() - time - 5.0)
+                    })?;
+                }
+
+                Event::UserEvent(GameUserEvent::SetTimeoutDispatch(ids)) => {
+                    ids.iter().for_each(|id| channels.update.dispatch(*id));
                 }
 
                 _ => {}

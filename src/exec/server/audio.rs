@@ -1,10 +1,26 @@
-use super::{BaseGameServer, GameServer, SendGameServer, ServerChannel};
+use crate::utils::mpsc::{UnboundedReceiver, UnboundedSender};
+
+use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
 
 pub enum SendMsg {}
 pub enum RecvMsg {}
 
 pub struct Server {
     pub base: BaseGameServer<SendMsg, RecvMsg>,
+}
+
+pub struct ServerChannel {
+    sender: UnboundedSender<RecvMsg>,
+    receiver: UnboundedReceiver<SendMsg>,
+}
+
+impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
+    fn sender(&self) -> &UnboundedSender<RecvMsg> {
+        &self.sender
+    }
+    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
+        &mut self.receiver
+    }
 }
 
 impl GameServer for Server {
@@ -27,8 +43,8 @@ impl SendGameServer for Server {
 }
 
 impl Server {
-    pub fn new() -> (Self, ServerChannel<SendMsg, RecvMsg>) {
-        let (base, channels) = BaseGameServer::new();
-        (Self { base }, channels)
+    pub fn new() -> (Self, ServerChannel) {
+        let (base, sender, receiver) = BaseGameServer::new();
+        (Self { base }, ServerChannel { receiver, sender })
     }
 }

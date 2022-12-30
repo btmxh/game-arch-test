@@ -1,0 +1,16 @@
+[package]
+name = "game-arch-test"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.68"
+gl = "0.14.0"
+glsl-layout = { version = "0.5.0", features = ["cgmath"] }
+glutin = "0.30.3"
+glutin-winit = "0.2.1"
+raw-window-handle = "0.5.0"
+tokio = { version = "1.23.0", features = ["sync"] }
+winit = "0.27.5"

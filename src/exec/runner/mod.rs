@@ -15,7 +15,7 @@ use super::server::{SendGameServer, ServerKind};
 pub mod container;
 
 pub enum FromRunnerMsg {
-    MoveServer(Box<dyn SendGameServer>),
+    MoveServer(Option<Box<dyn SendGameServer>>),
 }
 pub enum ToRunnerMsg {
     RequestServer(ServerKind),
@@ -75,7 +75,7 @@ impl ThreadRunner {
                         let server = self
                             .base
                             .container
-                            .take_server_check(kind)
+                            .take_server(kind)
                             .expect("error taking server");
                         self.send(FromRunnerMsg::MoveServer(server))
                             .expect("thread runner channel was unexpectedly closed");
@@ -181,7 +181,7 @@ impl ServerMover for ThreadRunnerHandle {
             .recv()
             .context("unable to receive server from runner thread")?;
         if let FromRunnerMsg::MoveServer(server) = message {
-            Ok(Some(server))
+            Ok(server)
         } else {
             bail!("invalid thread runner response")
         }

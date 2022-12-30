@@ -1,20 +1,27 @@
-use std::{ffi::CString, num::NonZeroU32};
+use std::{ffi::CString, num::NonZeroU32, time::SystemTime};
 
-use anyhow::Context;
+use anyhow::{bail, Context};
+use async_trait::async_trait;
 use glutin::{
     config::Config,
     context::{ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext},
     display::{Display, GetGlDisplay},
     prelude::{GlDisplay, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentGlContext},
-    surface::{GlSurface, Surface, SurfaceAttributesBuilder, WindowSurface},
+    surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface},
 };
 use winit::dpi::PhysicalSize;
 
 use super::{BaseGameServer, GameServer, SendGameServer, ServerChannel};
-use crate::display::SendRawHandle;
+use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
 
-pub enum SendMsg {}
-pub enum RecvMsg {}
+pub enum SendMsg {
+    Dummy,
+    VSyncSet(Option<SwapInterval>),
+}
+pub enum RecvMsg {
+    Dummy,
+    SetVSync(SwapInterval),
+}
 pub struct Server {
     pub base: BaseGameServer<SendMsg, RecvMsg>,
     pub raw_handles: SendRawHandle,
@@ -23,6 +30,7 @@ pub struct Server {
     pub gl_display: Display,
     pub gl_surface: Surface<WindowSurface>,
     pub gl_context: PossiblyCurrentContext,
+    pub swap_interval: SwapInterval,
 }
 
 pub struct SendServer {
@@ -32,6 +40,7 @@ pub struct SendServer {
     pub gl_config: Config,
     pub gl_display: Display,
     pub gl_context: NotCurrentContext,
+    pub swap_interval: SwapInterval,
 }
 
 impl SendServer {
@@ -66,9 +75,41 @@ impl SendServer {
                 gl_display,
                 gl_context,
                 gl_config,
+                swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
             },
             channels,
         ))
+    }
+}
+
+impl Server {
+    fn set_swap_interval(&mut self, swap_interval: SwapInterval) -> anyhow::Result<()> {
+        self.gl_surface
+            .set_swap_interval(&self.gl_context, swap_interval)?;
+        self.swap_interval = swap_interval;
+        Ok(())
+    }
+
+    fn process_messages(&mut self) -> anyhow::Result<()> {
+        let messages = self
+            .base
+            .receiver
+            .receive_all_pending(false)
+            .ok_or_else(|| anyhow::format_err!("thread runner channel was unexpectedly closed"))?;
+        let mut vsync = None;
+        for message in messages {
+            match message {
+                RecvMsg::SetVSync(swap_interval) => vsync = Some(swap_interval),
+                _ => {}
+            }
+        }
+
+        if let Some(swap_interval) = vsync {
+            let result = self.set_swap_interval(swap_interval).ok().map(|_| swap_interval);
+            self.base.send(SendMsg::VSyncSet(result))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -85,15 +126,23 @@ impl GameServer for Server {
             gl_display: self.gl_display,
             raw_handles: self.raw_handles,
             display_size: self.display_size,
+            swap_interval: self.swap_interval,
         }))
     }
 
     fn run(&mut self) -> anyhow::Result<()> {
+        self.process_messages();
         unsafe {
             gl::ClearColor(0.0, 0.0, 0.2, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
         self.gl_surface.swap_buffers(&self.gl_context)?;
+        println!(
+            "{}",
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_secs_f64()
+        );
         Ok(())
     }
 }
@@ -120,6 +169,7 @@ impl SendGameServer for SendServer {
             .gl_context
             .make_current(&gl_surface)
             .context("unable to make OpenGL context current")?;
+        gl_surface.set_swap_interval(&gl_context, self.swap_interval)?;
         Ok(Server {
             base: self.base,
             gl_config: self.gl_config,
@@ -128,7 +178,31 @@ impl SendGameServer for SendServer {
             gl_surface,
             raw_handles: self.raw_handles,
             display_size: self.display_size,
+            swap_interval: self.swap_interval,
         })
+    }
+}
+
+#[async_trait]
+pub trait DrawServerChannel {
+    async fn set_vsync(&mut self, interval: SwapInterval) -> anyhow::Result<SwapInterval>;
+}
+
+#[async_trait]
+impl DrawServerChannel for ServerChannel<SendMsg, RecvMsg> {
+    async fn set_vsync(&mut self, interval: SwapInterval) -> anyhow::Result<SwapInterval> {
+        self.send(RecvMsg::SetVSync(interval))?;
+        if let SendMsg::VSyncSet(result) = self.recv()? {
+            match result {
+                Some(interval) => {},
+                Some(other_interval) => 
+                log::warn!("VSync swap interval '{:?}' not supported, falling back to swap interval '{:?}'", interval, result),
+                None => log::error!("Toggling VSync failed"),
+            }
+            result.ok_or_else(|| anyhow::format_err!("failed to set swap interval"))
+        } else {
+            bail!("unexpected response message from thread")
+        }
     }
 }
 

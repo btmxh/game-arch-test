@@ -1,14 +1,21 @@
+use std::num::NonZeroU32;
+
 use anyhow::Context;
 use display::Display;
 use exec::{
     executor::GameServerExecutor,
-    server::{audio, draw, update, ServerChannels}, runner::MAIN_RUNNER_ID,
+    runner::MAIN_RUNNER_ID,
+    server::{audio, draw, update, ServerChannels, ServerKind},
 };
+use futures::executor::block_on;
+use glutin::surface::SwapInterval;
 use winit::{
     dpi::PhysicalSize,
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::EventLoop,
 };
+
+use crate::exec::server::draw::DrawServerChannel;
 
 pub mod display;
 pub mod exec;
@@ -25,23 +32,63 @@ fn main() -> anyhow::Result<()> {
     let (update, update_channels) = update::Server::new();
     let mut executor = GameServerExecutor::new(audio, draw, update)?;
     let event_loop_proxy = event_loop.create_proxy();
-    let _channels = ServerChannels {
+    let mut channels = ServerChannels {
         audio: audio_channels,
         draw: draw_channels,
         update: update_channels,
     };
+    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
+    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
     executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
+    let mut vsync = true;
     executor.run(event_loop, move |e| {
-        match e {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::CloseRequested,
-            } if display.get_window_id() == window_id => {
-                event_loop_proxy.send_event(())?;
-            }
+        block_on((|| async {
+            match e {
+                Event::WindowEvent {
+                    window_id,
+                    event: WindowEvent::CloseRequested,
+                } if display.get_window_id() == window_id => {
+                    event_loop_proxy.send_event(())?;
+                }
 
-            _ => {}
-        };
-        Ok(())
+                Event::WindowEvent {
+                    window_id,
+                    event: WindowEvent::Resized(size),
+                } if display.get_window_id() == window_id => {
+                    // channels.draw.send();
+                }
+
+                Event::WindowEvent {
+                    window_id,
+                    event:
+                        WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Released,
+                                    virtual_keycode: Some(VirtualKeyCode::R),
+                                    ..
+                                },
+                            ..
+                        },
+                } => {
+                    vsync = !vsync;
+                    channels
+                        .draw
+                        .set_vsync(if vsync {
+                            SwapInterval::DontWait
+                        } else {
+                            SwapInterval::Wait(NonZeroU32::new(1).unwrap())
+                        })
+                        .await?;
+                }
+
+                _ => {}
+            };
+            Ok(())
+        })())
     });
+}
+
+async fn handle_event() {
+
 }

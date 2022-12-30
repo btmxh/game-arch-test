@@ -81,9 +81,9 @@ impl ThreadRunner {
                             .expect("thread runner channel was unexpectedly closed");
                     }
                 }
-
-                self.base.run_single().expect("error while running servers");
             }
+
+            self.base.run_single().expect("error while running servers");
         }
     }
 }

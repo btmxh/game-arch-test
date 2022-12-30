@@ -30,7 +30,22 @@ impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
         self.sender
             .send(message)
             .map_err(|e| anyhow::format_err!("{}", e))
-            .context("Unable to send message to (local) game server")
+            .context("Unable to send message from (local) game server")
+    }
+}
+
+impl<SendMsg, RecvMsg> ServerChannel<SendMsg, RecvMsg> {
+    pub fn send(&self, message: RecvMsg) -> anyhow::Result<()> {
+        self.sender
+            .send(message)
+            .map_err(|e| anyhow::format_err!("{}", e))
+            .context("unable to send message to (local) game server")
+    }
+
+    pub fn recv(&mut self) -> anyhow::Result<SendMsg> {
+        self.receiver.blocking_recv().ok_or_else(|| {
+            anyhow::format_err!("unable to receive message from (local) game server")
+        })
     }
 }
 

@@ -105,9 +105,9 @@ impl GameServerExecutor {
             })
     }
 
-    pub fn run<F>(mut self, event_loop: EventLoop<()>, event_handler: F) -> !
+    pub fn run<F>(mut self, event_loop: EventLoop<()>, mut event_handler: F) -> !
     where
-        F: Fn(Event<()>) -> anyhow::Result<()> + 'static,
+        F: FnMut(Event<()>) -> anyhow::Result<()> + 'static,
     {
         event_loop.run(move |event, _target, control_flow| {
             match *control_flow {

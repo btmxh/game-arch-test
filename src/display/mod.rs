@@ -1,8 +1,4 @@
-use anyhow::Context;
-use glutin::{
-    config::{Config, ConfigTemplateBuilder},
-    display::GetGlDisplay,
-};
+use glutin::config::{Config, ConfigTemplateBuilder};
 use glutin_winit::DisplayBuilder;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -10,12 +6,15 @@ use raw_window_handle::{
 use winit::{
     dpi::PhysicalSize,
     event_loop::EventLoopWindowTarget,
-    window::{Window, WindowBuilder},
+    window::{Window, WindowBuilder, WindowId},
 };
 
 pub struct Display {
     window: Window,
 }
+
+pub struct SendRawHandle(pub RawWindowHandle, pub RawDisplayHandle);
+unsafe impl Send for SendRawHandle {}
 
 impl Display {
     pub fn new_display<T>(
@@ -49,5 +48,17 @@ impl Display {
 
     pub fn get_raw_display_handle(&self) -> RawDisplayHandle {
         self.window.raw_display_handle()
+    }
+
+    pub fn get_raw_handles(&self) -> SendRawHandle {
+        SendRawHandle(self.get_raw_window_handle(), self.get_raw_display_handle())
+    }
+
+    pub fn get_window_id(&self) -> WindowId {
+        self.window.id()
+    }
+
+    pub fn get_size(&self) -> PhysicalSize<u32> {
+        self.window.inner_size()
     }
 }

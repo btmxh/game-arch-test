@@ -1,8 +1,13 @@
-use crate::utils::mpsc::{UnboundedReceiver, UnboundedSender};
+use crate::{
+    exec::dispatch::DispatchMsg,
+    utils::mpsc::{UnboundedReceiver, UnboundedSender},
+};
 
 use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
 
-pub enum SendMsg {}
+pub enum SendMsg {
+    Dispatch(DispatchMsg),
+}
 pub enum RecvMsg {}
 
 pub struct Server {

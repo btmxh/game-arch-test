@@ -1,22 +1,15 @@
-use std::{num::NonZeroU32, time::Duration};
-
 use anyhow::Context;
 use display::Display;
 use events::GameUserEvent;
 use exec::{
+    dispatch::DispatchList,
     executor::GameServerExecutor,
+    main_ctx::MainContext,
     runner::MAIN_RUNNER_ID,
     server::{audio, draw, update, ServerChannels, ServerKind},
 };
 use futures::executor::block_on;
-use glutin::surface::SwapInterval;
-use winit::{
-    dpi::PhysicalSize,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::EventLoopBuilder,
-};
-
-use crate::utils::clock::debug_get_time;
+use winit::{dpi::PhysicalSize, event_loop::EventLoopBuilder};
 
 pub mod display;
 pub mod events;
@@ -34,90 +27,18 @@ fn main() -> anyhow::Result<()> {
     let (update, update_channels) = update::Server::new(event_loop.create_proxy());
     let mut executor = GameServerExecutor::new(audio, draw, update)?;
     let event_loop_proxy = event_loop.create_proxy();
-    let mut channels = ServerChannels {
+    let channels = ServerChannels {
         audio: audio_channels,
         draw: draw_channels,
         update: update_channels,
     };
+    let dispatch_list = DispatchList::new();
     executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
     executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
     executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
     executor.set_frequency(0, 1000.0)?;
-    let mut vsync = true;
+    let mut main_ctx = MainContext::new(display, event_loop_proxy, dispatch_list, channels);
     executor.run(event_loop, move |e| {
-        block_on(async {
-            match e {
-                Event::WindowEvent {
-                    window_id,
-                    event: WindowEvent::CloseRequested,
-                } if display.get_window_id() == window_id => {
-                    event_loop_proxy.send_event(GameUserEvent::Exit)?;
-                }
-
-                Event::WindowEvent {
-                    window_id,
-                    event: WindowEvent::Resized(size),
-                } if display.get_window_id() == window_id => {
-                    let width = NonZeroU32::new(size.width);
-                    let height = NonZeroU32::new(size.height);
-                    if let Some(width) = width {
-                        if let Some(height) = height {
-                            channels.draw.resize(PhysicalSize { width, height })?;
-                        }
-                    }
-                }
-
-                Event::WindowEvent {
-                    window_id,
-                    event:
-                        WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    state: ElementState::Released,
-                                    virtual_keycode: Some(VirtualKeyCode::R),
-                                    ..
-                                },
-                            ..
-                        },
-                } if display.get_window_id() == window_id => {
-                    vsync = !vsync;
-                    channels
-                        .draw
-                        .set_vsync(if vsync {
-                            SwapInterval::Wait(NonZeroU32::new(1).unwrap())
-                        } else {
-                            SwapInterval::DontWait
-                        })
-                        .await?;
-                }
-
-                Event::WindowEvent {
-                    window_id,
-                    event:
-                        WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    state: ElementState::Released,
-                                    virtual_keycode: Some(VirtualKeyCode::E),
-                                    ..
-                                },
-                            ..
-                        },
-                } if display.get_window_id() == window_id => {
-                    let time = debug_get_time();
-                    println!("{}", time);
-                    channels.update.set_timeout(Duration::from_secs(5), move || {
-                        println!("hello {}", debug_get_time() - time - 5.0)
-                    })?;
-                }
-
-                Event::UserEvent(GameUserEvent::SetTimeoutDispatch(ids)) => {
-                    ids.iter().for_each(|id| channels.update.dispatch(*id));
-                }
-
-                _ => {}
-            };
-            Ok(())
-        })
+        block_on(async { main_ctx.handle_event(e).await })
     });
 }

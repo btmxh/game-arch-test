@@ -9,25 +9,20 @@ use winit::event_loop::EventLoopProxy;
 use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
 use crate::{
     events::GameUserEvent,
-    utils::{
-        error::ResultExt,
-        mpsc::{UnboundedReceiver, UnboundedReceiverExt, UnboundedSender},
-    },
+    exec::dispatch::{DispatchId, DispatchMsg},
+    utils::mpsc::{UnboundedReceiver, UnboundedReceiverExt, UnboundedSender},
 };
 
-pub enum SendMsg {
-    Dispatch(Vec<u64>),
-}
+pub enum SendMsg {}
 pub enum RecvMsg {
-    SetTimeout(Timeout),
+    SetTimeout(Instant, DispatchId),
+    CancelTimeout(DispatchId),
 }
-
-pub struct Timeout(Instant, u64);
 
 pub struct Server {
     pub base: BaseGameServer<SendMsg, RecvMsg>,
     pub proxy: EventLoopProxy<GameUserEvent>,
-    pub timeouts: Vec<Timeout>,
+    pub timeouts: HashMap<DispatchId, Instant>,
 }
 
 impl GameServer for Server {
@@ -39,13 +34,14 @@ impl GameServer for Server {
             .context("thread runner channel was unexpectedly closed")?;
         for message in messages {
             match message {
-                RecvMsg::SetTimeout(timeout) => self.timeouts.push(timeout),
-            }
+                RecvMsg::SetTimeout(inst, id) => self.timeouts.insert(id, inst),
+                RecvMsg::CancelTimeout(id) => self.timeouts.remove(&id),
+            };
         }
         let mut done_timeouts = Vec::new();
-        self.timeouts.retain(|Timeout(end, id)| {
-            if Instant::now() >= *end {
-                done_timeouts.push(*id);
+        self.timeouts.retain(|&id, &mut end| {
+            if Instant::now() >= end {
+                done_timeouts.push(id);
                 false
             } else {
                 true
@@ -53,7 +49,9 @@ impl GameServer for Server {
         });
         if !done_timeouts.is_empty() {
             self.proxy
-                .send_event(GameUserEvent::SetTimeoutDispatch(done_timeouts))?;
+                .send_event(GameUserEvent::Dispatch(DispatchMsg::ExecuteDispatch(
+                    done_timeouts,
+                )))?;
         }
         Ok(())
     }
@@ -79,14 +77,9 @@ impl Server {
             Self {
                 base,
                 proxy,
-                timeouts: Vec::new(),
+                timeouts: HashMap::new(),
             },
-            ServerChannel {
-                sender,
-                receiver,
-                dispatches: HashMap::new(),
-                dispatch_counter: 0,
-            },
+            ServerChannel { sender, receiver },
         )
     }
 }
@@ -94,8 +87,6 @@ impl Server {
 pub struct ServerChannel {
     sender: UnboundedSender<RecvMsg>,
     receiver: UnboundedReceiver<SendMsg>,
-    dispatches: HashMap<u64, Box<dyn FnOnce()>>,
-    dispatch_counter: u64,
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
@@ -108,25 +99,13 @@ impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
 }
 
 impl ServerChannel {
-    pub fn dispatch(&mut self, id: u64) {
-        let dispatch = self
-            .dispatches
-            .remove(&id)
-            .ok_or_else(|| anyhow::format_err!("dispatch with ID {} not found", id))
-            .log_warn();
-        if let Some(dispatch) = dispatch {
-            dispatch();
-        }
+    pub fn set_timeout(&self, duration: Duration, id: DispatchId) -> anyhow::Result<()> {
+        self.send(RecvMsg::SetTimeout(Instant::now() + duration, id))
+            .context("unable to send timeout request")
     }
 
-    pub fn set_timeout<F>(&mut self, duration: Duration, callback: F) -> anyhow::Result<()>
-    where
-        F: FnOnce() + 'static,
-    {
-        let id = self.dispatch_counter;
-        self.dispatch_counter += 1;
-        self.dispatches.insert(id, Box::new(callback));
-        self.send(RecvMsg::SetTimeout(Timeout(Instant::now() + duration, id)))
-            .context("unable to send timeout request")
+    pub fn cancel_timeout(&self, id: DispatchId) -> anyhow::Result<()> {
+        self.send(RecvMsg::CancelTimeout(id))
+            .context("unable to send cancel timeout request")
     }
 }

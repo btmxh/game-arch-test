@@ -29,15 +29,15 @@ impl ServerMover for ServerContainer {
 }
 
 impl ServerContainer {
-    pub fn run_single(&mut self) -> anyhow::Result<()> {
+    pub fn run_single(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
         if let Some(server) = self.audio.as_mut() {
-            server.run()?;
+            server.run(runner_frequency)?;
         }
         if let Some(server) = self.draw.as_mut() {
-            server.run()?;
+            server.run(runner_frequency)?;
         }
         if let Some(server) = self.update.as_mut() {
-            server.run()?;
+            server.run(runner_frequency)?;
         }
         Ok(())
     }

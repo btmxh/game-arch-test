@@ -20,7 +20,7 @@ impl<T, E: Display> ResultExt<T> for Result<T, E> {
         match self {
             Ok(value) => Some(value),
             Err(err) => {
-                log::error!("{}", err);
+                tracing::error!("{}", err);
                 None
             }
         }
@@ -30,7 +30,7 @@ impl<T, E: Display> ResultExt<T> for Result<T, E> {
         match self {
             Ok(value) => Some(value),
             Err(err) => {
-                log::warn!("{}", err);
+                tracing::warn!("{}", err);
                 None
             }
         }

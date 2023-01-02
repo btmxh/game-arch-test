@@ -1,5 +1,15 @@
-use crate::utils::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use crate::{
+    events::GameUserEvent,
+    utils::{
+        frequency_runner::FrequencyProfiler,
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+    },
+};
 use anyhow::Context;
+use rand::{thread_rng, Rng};
+use winit::event_loop::EventLoopProxy;
+
+use super::dispatch::{DispatchId, ReturnMechanism};
 
 pub mod audio;
 pub mod draw;
@@ -11,7 +21,12 @@ pub enum BaseSendMsg {
 
 pub struct BaseGameServer<SendMsg, RecvMsg> {
     pub sender: UnboundedSender<SendMsg>,
+    pub proxy: EventLoopProxy<GameUserEvent>,
     pub receiver: UnboundedReceiver<RecvMsg>,
+    pub frequency_profiling: bool,
+    pub frequency_profiler: FrequencyProfiler,
+    pub relative_frequency: f64,
+    pub timer: f64,
 }
 
 pub trait GameServerChannel<SendMsg, RecvMsg> {
@@ -21,12 +36,14 @@ pub trait GameServerChannel<SendMsg, RecvMsg> {
         self.sender()
             .send(message)
             .map_err(|e| anyhow::format_err!("{}", e))
-            .context("unable to send message to (local) game server")
+            .context(
+                "unable to send message to (local) game server (the server was probably closed)",
+            )
     }
 
     fn recv(&mut self) -> anyhow::Result<SendMsg> {
         self.receiver().blocking_recv().ok_or_else(|| {
-            anyhow::format_err!("unable to receive message from (local) game server")
+            anyhow::format_err!("unable to receive message from (local) game server (the server was probably closed)")
         })
     }
 }
@@ -38,11 +55,11 @@ pub struct ServerChannels {
 }
 
 impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
-    pub fn send(&mut self, message: SendMsg) -> anyhow::Result<()> {
+    pub fn send(&self, message: SendMsg) -> anyhow::Result<()> {
         self.sender
             .send(message)
             .map_err(|e| anyhow::format_err!("{}", e))
-            .context("Unable to send message from (local) game server")
+            .context("Unable to send message from (local) game server (the main event loop receiver was closed)")
     }
 }
 
@@ -54,7 +71,7 @@ pub enum ServerKind {
 }
 
 pub trait GameServer {
-    fn run(&mut self) -> anyhow::Result<()>;
+    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()>;
     fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>>;
 }
 pub trait SendGameServer: Send {
@@ -74,16 +91,64 @@ pub trait SendGameServer: Send {
 }
 
 impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
-    pub fn new() -> (Self, UnboundedSender<RecvMsg>, UnboundedReceiver<SendMsg>) {
+    pub fn new(
+        proxy: EventLoopProxy<GameUserEvent>,
+    ) -> (Self, UnboundedSender<RecvMsg>, UnboundedReceiver<SendMsg>) {
         let (send_sender, send_receiver) = mpsc::unbounded_channel();
         let (recv_sender, recv_receiver) = mpsc::unbounded_channel();
         (
             Self {
                 receiver: recv_receiver,
                 sender: send_sender,
+                proxy,
+                frequency_profiler: FrequencyProfiler::default(),
+                frequency_profiling: false,
+                relative_frequency: 1.0,
+                timer: 0.0,
             },
             recv_sender,
             send_receiver,
         )
+    }
+
+    pub fn handle_msg<F1, F2>(
+        &self,
+        ret: Option<ReturnMechanism>,
+        name: &str,
+        make_sync: F1,
+        make_event: F2,
+    ) -> anyhow::Result<()>
+    where
+        F1: FnOnce() -> SendMsg,
+        F2: FnOnce(Option<DispatchId>) -> GameUserEvent,
+    {
+        match ret {
+            Some(ReturnMechanism::Sync) => self.send(make_sync()).with_context(|| {
+                format!("unable to send {name} message for Sync return mechanism")
+            }),
+            Some(ReturnMechanism::Event(id)) => self
+                .proxy
+                .send_event(make_event(id))
+                .with_context(|| format!("unable to send {name} event for Event return mechanism")),
+            None => Ok(()),
+        }
+    }
+
+    pub fn run(&mut self, server_name: &str, intended_frequency: f64) -> usize {
+        if let Some(frequency) = self.frequency_profiler.update_and_get_frequency() {
+            if self.frequency_profiling && thread_rng().gen::<f64>() * frequency < 1.0 {
+                tracing::debug!(
+                    "{} server running frequency: {} (delta time delay: {}ms)",
+                    server_name,
+                    frequency,
+                    (1.0 / frequency - 1.0 / intended_frequency) * 1e3
+                );
+            }
+        }
+
+        self.timer += self.relative_frequency;
+        let run_count = self.timer.floor();
+        self.timer -= run_count;
+        run_count as _
     }
 }

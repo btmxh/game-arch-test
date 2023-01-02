@@ -111,7 +111,7 @@ impl GameServerExecutor {
             .filter_map(|r| r.take())
             .for_each(|r| {
                 if r.join() {
-                    log::error!("runner thread panicked");
+                    tracing::error!("runner thread panicked");
                 }
             })
     }

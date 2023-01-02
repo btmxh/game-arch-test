@@ -1,5 +1,6 @@
 use std::{num::NonZeroU32, time::Duration};
 
+use anyhow::Context;
 use glutin::surface::SwapInterval;
 use winit::{
     dpi::PhysicalSize,
@@ -10,11 +11,11 @@ use winit::{
 use crate::{
     display::Display,
     events::{GameEvent, GameUserEvent},
-    utils::clock::debug_get_time,
+    utils::{clock::debug_get_time, error::ResultExt},
 };
 
 use super::{
-    dispatch::{DispatchId, DispatchList},
+    dispatch::{DispatchId, DispatchList, ReturnMechanism},
     server::ServerChannels,
 };
 
@@ -24,6 +25,7 @@ pub struct MainContext {
     pub dispatch_list: DispatchList,
     pub channels: ServerChannels,
     pub vsync: bool,
+    pub frequency_profiling: bool,
 }
 
 impl MainContext {
@@ -39,6 +41,7 @@ impl MainContext {
             dispatch_list,
             channels,
             vsync: true,
+            frequency_profiling: false,
         }
     }
     pub async fn handle_event(&mut self, event: GameEvent<'_>) -> anyhow::Result<()> {
@@ -70,6 +73,31 @@ impl MainContext {
                         input:
                             KeyboardInput {
                                 state: ElementState::Released,
+                                virtual_keycode: Some(VirtualKeyCode::Q),
+                                ..
+                            },
+                        ..
+                    },
+            } if self.display.get_window_id() == window_id => {
+                self.frequency_profiling = !self.frequency_profiling;
+                self.channels
+                    .update
+                    .set_frequency_profiling(self.frequency_profiling)?;
+                self.channels
+                    .draw
+                    .set_frequency_profiling(self.frequency_profiling)?;
+                self.channels
+                    .audio
+                    .set_frequency_profiling(self.frequency_profiling)?;
+            }
+
+            Event::WindowEvent {
+                window_id,
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state: ElementState::Released,
                                 virtual_keycode: Some(VirtualKeyCode::R),
                                 ..
                             },
@@ -77,14 +105,28 @@ impl MainContext {
                     },
             } if self.display.get_window_id() == window_id => {
                 self.vsync = !self.vsync;
-                self.channels
+                let interval = if self.vsync {
+                    SwapInterval::Wait(NonZeroU32::new(1).unwrap())
+                } else {
+                    SwapInterval::DontWait
+                };
+                if let Some(Some(new_interval)) = self
+                    .channels
                     .draw
-                    .set_vsync(if self.vsync {
-                        SwapInterval::Wait(NonZeroU32::new(1).unwrap())
+                    .set_vsync(interval, Some(ReturnMechanism::Sync))
+                    .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
+                    .log_warn()
+                {
+                    if interval != new_interval {
+                        tracing::warn!(
+                            "unable to set vsync swap interval to {:?}, falling back to {:?} instead",
+                            interval,
+                            new_interval
+                        );
                     } else {
-                        SwapInterval::DontWait
-                    })
-                    .await?;
+                        tracing::info!("vsync swap interval set to {:?}", new_interval);
+                    }
+                }
             }
 
             Event::WindowEvent {
@@ -101,9 +143,10 @@ impl MainContext {
                     },
             } if self.display.get_window_id() == window_id => {
                 let time = debug_get_time();
-                println!("{}", time);
-                self.set_timeout(Duration::from_secs(5), move |_| {
-                    println!("hello {}", debug_get_time() - time - 5.0)
+                let test_duration = 5.0;
+                tracing::info!("{}", time);
+                self.set_timeout(Duration::from_secs_f64(test_duration), move |_, _| {
+                    tracing::info!("delay: {}s", debug_get_time() - time - test_duration);
                 })?;
             }
 
@@ -111,7 +154,9 @@ impl MainContext {
                 self.dispatch_list
                     .handle_dispatch_msg(msg)
                     .into_iter()
-                    .for_each(|d| d(self));
+                    .for_each(|(id, d)| {
+                        d(self, id);
+                    });
             }
 
             _ => {}
@@ -121,7 +166,7 @@ impl MainContext {
 
     pub fn set_timeout<F>(&mut self, timeout: Duration, callback: F) -> anyhow::Result<DispatchId>
     where
-        F: FnOnce(&mut MainContext) + 'static,
+        F: FnOnce(&mut MainContext, DispatchId) + 'static,
     {
         let id = self.dispatch_list.push(callback);
         self.channels.update.set_timeout(timeout, id)?;

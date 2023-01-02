@@ -14,7 +14,9 @@ gl = "0.14.0"
 glsl-layout = { version = "0.5.0", features = ["cgmath"] }
 glutin = "0.30.3"
 glutin-winit = "0.2.1"
-log = "0.4.17"
+rand = "0.8.5"
 raw-window-handle = "0.5.0"
 tokio = { version = "1.23.0", features = ["sync"] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
 winit = "0.27.5"

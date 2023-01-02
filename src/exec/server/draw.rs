@@ -1,4 +1,8 @@
-use crate::utils::mpsc::{UnboundedReceiver, UnboundedSender};
+use crate::{
+    events::GameUserEvent,
+    exec::dispatch::ReturnMechanism,
+    utils::mpsc::{UnboundedReceiver, UnboundedSender},
+};
 use std::{ffi::CString, num::NonZeroU32};
 
 use anyhow::{bail, Context};
@@ -9,18 +13,17 @@ use glutin::{
     prelude::{GlDisplay, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentGlContext},
     surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface},
 };
-use winit::dpi::PhysicalSize;
+use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 
 use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
 use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
 
 pub enum SendMsg {
-    Dummy,
     VSyncSet(Option<SwapInterval>),
 }
 pub enum RecvMsg {
-    Dummy,
-    SetVSync(SwapInterval),
+    SetFrequencyProfiling(bool),
+    SetVSync(SwapInterval, Option<ReturnMechanism>),
     Resize(PhysicalSize<NonZeroU32>),
 }
 pub struct Server {
@@ -46,10 +49,11 @@ pub struct SendServer {
 
 impl SendServer {
     pub fn new(
+        proxy: EventLoopProxy<GameUserEvent>,
         gl_config: Config,
         display: &crate::display::Display,
     ) -> anyhow::Result<(Self, ServerChannel)> {
-        let (base, sender, receiver) = BaseGameServer::new();
+        let (base, sender, receiver) = BaseGameServer::new(proxy);
         let gl_display = gl_config.display();
         let context_attribs = ContextAttributesBuilder::new()
             .with_context_api(ContextApi::Gles(None))
@@ -101,19 +105,23 @@ impl Server {
         let mut resize = None;
         for message in messages {
             match message {
-                RecvMsg::SetVSync(swap_interval) => vsync = Some(swap_interval),
+                RecvMsg::SetVSync(swap_interval, ret) => vsync = Some((swap_interval, ret)),
                 RecvMsg::Resize(new_size) => resize = Some(new_size),
-                _ => {}
+                RecvMsg::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
             }
         }
 
-        if let Some(swap_interval) = vsync {
-            println!("{:?}", swap_interval);
+        if let Some((swap_interval, ret)) = vsync {
             let result = self
                 .set_swap_interval(swap_interval)
                 .ok()
                 .map(|_| swap_interval);
-            self.base.send(SendMsg::VSyncSet(result))?;
+            self.base.handle_msg(
+                ret,
+                "VSyncSet",
+                || SendMsg::VSyncSet(result),
+                |id| GameUserEvent::VSyncSet(result, id),
+            )?;
         }
 
         if let Some(new_size) = resize {
@@ -142,7 +150,8 @@ impl GameServer for Server {
         }))
     }
 
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+        self.base.run("Draw", runner_frequency);
         self.process_messages()?;
         unsafe {
             gl::ClearColor(0.0, 0.0, 0.2, 0.0);
@@ -203,24 +212,33 @@ impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
 }
 
 impl ServerChannel {
-    pub async fn set_vsync(&mut self, interval: SwapInterval) -> anyhow::Result<SwapInterval> {
-        self.send(RecvMsg::SetVSync(interval))?;
-        if let SendMsg::VSyncSet(result) = self.recv()? {
-            match result {
-                Some(other_interval) if other_interval != interval => {
-                    log::warn!("VSync swap interval '{:?}' not supported, falling back to swap interval '{:?}'", interval, result)
-                }
-                None => log::error!("Toggling VSync failed"),
-                _ => {}
+    #[allow(irrefutable_let_patterns)]
+    pub fn set_vsync(
+        &mut self,
+        interval: SwapInterval,
+        ret: Option<ReturnMechanism>,
+    ) -> anyhow::Result<Option<SwapInterval>> {
+        self.send(RecvMsg::SetVSync(interval, ret))?;
+        if let Some(ReturnMechanism::Sync) = ret {
+            if let SendMsg::VSyncSet(result) = self.recv()? {
+                return result
+                    .ok_or_else(|| anyhow::format_err!("failed to set swap interval"))
+                    .map(Some);
+            } else {
+                bail!("unexpected response message from thread");
             }
-            result.ok_or_else(|| anyhow::format_err!("failed to set swap interval"))
-        } else {
-            bail!("unexpected response message from thread")
         }
+
+        Ok(None)
     }
 
     pub fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()> {
         self.send(RecvMsg::Resize(size))
+    }
+
+    pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
+        self.send(RecvMsg::SetFrequencyProfiling(fp))
+            .context("unable to send frequency profiling request")
     }
 }
 

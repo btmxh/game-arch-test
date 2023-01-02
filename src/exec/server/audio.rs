@@ -1,6 +1,10 @@
+use anyhow::Context;
+use winit::event_loop::EventLoopProxy;
+
 use crate::{
+    events::GameUserEvent,
     exec::dispatch::DispatchMsg,
-    utils::mpsc::{UnboundedReceiver, UnboundedSender},
+    utils::mpsc::{UnboundedReceiver, UnboundedReceiverExt, UnboundedSender},
 };
 
 use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
@@ -8,7 +12,9 @@ use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
 pub enum SendMsg {
     Dispatch(DispatchMsg),
 }
-pub enum RecvMsg {}
+pub enum RecvMsg {
+    SetFrequencyProfiling(bool),
+}
 
 pub struct Server {
     pub base: BaseGameServer<SendMsg, RecvMsg>,
@@ -29,7 +35,20 @@ impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
 }
 
 impl GameServer for Server {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+        self.base.run("Audio", runner_frequency);
+        let messages = self
+            .base
+            .receiver
+            .receive_all_pending(false)
+            .context("thread runner channel was unexpectedly closed")?;
+        for message in messages {
+            match message {
+                RecvMsg::SetFrequencyProfiling(fp) => {
+                    self.base.frequency_profiling = fp;
+                }
+            }
+        }
         Ok(())
     }
     fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>> {
@@ -48,8 +67,15 @@ impl SendGameServer for Server {
 }
 
 impl Server {
-    pub fn new() -> (Self, ServerChannel) {
-        let (base, sender, receiver) = BaseGameServer::new();
+    pub fn new(proxy: EventLoopProxy<GameUserEvent>) -> (Self, ServerChannel) {
+        let (base, sender, receiver) = BaseGameServer::new(proxy);
         (Self { base }, ServerChannel { receiver, sender })
+    }
+}
+
+impl ServerChannel {
+    pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
+        self.send(RecvMsg::SetFrequencyProfiling(fp))
+            .context("unable to send frequency profiling request")
     }
 }

@@ -38,10 +38,6 @@ impl Display {
         ))
     }
 
-    pub fn kys(&mut self) {
-        println!("hello");
-    }
-
     pub fn get_raw_window_handle(&self) -> RawWindowHandle {
         self.window.raw_window_handle()
     }

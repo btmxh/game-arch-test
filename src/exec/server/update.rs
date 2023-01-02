@@ -15,18 +15,19 @@ use crate::{
 
 pub enum SendMsg {}
 pub enum RecvMsg {
+    SetFrequencyProfiling(bool),
     SetTimeout(Instant, DispatchId),
     CancelTimeout(DispatchId),
 }
 
 pub struct Server {
     pub base: BaseGameServer<SendMsg, RecvMsg>,
-    pub proxy: EventLoopProxy<GameUserEvent>,
     pub timeouts: HashMap<DispatchId, Instant>,
 }
 
 impl GameServer for Server {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+        self.base.run("Update", runner_frequency);
         let messages = self
             .base
             .receiver
@@ -34,8 +35,15 @@ impl GameServer for Server {
             .context("thread runner channel was unexpectedly closed")?;
         for message in messages {
             match message {
-                RecvMsg::SetTimeout(inst, id) => self.timeouts.insert(id, inst),
-                RecvMsg::CancelTimeout(id) => self.timeouts.remove(&id),
+                RecvMsg::SetTimeout(inst, id) => {
+                    self.timeouts.insert(id, inst);
+                }
+                RecvMsg::CancelTimeout(id) => {
+                    self.timeouts.remove(&id);
+                }
+                RecvMsg::SetFrequencyProfiling(fp) => {
+                    self.base.frequency_profiling = fp;
+                }
             };
         }
         let mut done_timeouts = Vec::new();
@@ -48,7 +56,8 @@ impl GameServer for Server {
             }
         });
         if !done_timeouts.is_empty() {
-            self.proxy
+            self.base
+                .proxy
                 .send_event(GameUserEvent::Dispatch(DispatchMsg::ExecuteDispatch(
                     done_timeouts,
                 )))?;
@@ -72,11 +81,10 @@ impl SendGameServer for Server {
 
 impl Server {
     pub fn new(proxy: EventLoopProxy<GameUserEvent>) -> (Self, ServerChannel) {
-        let (base, sender, receiver) = BaseGameServer::new();
+        let (base, sender, receiver) = BaseGameServer::new(proxy);
         (
             Self {
                 base,
-                proxy,
                 timeouts: HashMap::new(),
             },
             ServerChannel { sender, receiver },
@@ -107,5 +115,10 @@ impl ServerChannel {
     pub fn cancel_timeout(&self, id: DispatchId) -> anyhow::Result<()> {
         self.send(RecvMsg::CancelTimeout(id))
             .context("unable to send cancel timeout request")
+    }
+
+    pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
+        self.send(RecvMsg::SetFrequencyProfiling(fp))
+            .context("unable to send frequency profiling request")
     }
 }

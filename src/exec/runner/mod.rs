@@ -33,7 +33,7 @@ pub struct Runner {
 
 impl Runner {
     pub fn run_single(&mut self) -> anyhow::Result<()> {
-        self.container.run_single()?;
+        self.container.run_single(self.frequency)?;
         self.sync.sync(self.frequency);
         Ok(())
     }

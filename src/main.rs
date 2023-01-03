@@ -8,7 +8,7 @@ use exec::{
     server::{audio, draw, update, ServerChannels},
 };
 use futures::executor::block_on;
-use utils::log::init_log;
+use utils::{args::parse_args, log::init_log};
 use winit::{dpi::PhysicalSize, event_loop::EventLoopBuilder};
 
 pub mod display;
@@ -18,6 +18,7 @@ pub mod graphics;
 pub mod utils;
 
 fn main() -> anyhow::Result<()> {
+    parse_args();
     init_log()?;
     let event_loop = EventLoopBuilder::<GameUserEvent>::with_user_event().build();
     let (display, gl_config) =

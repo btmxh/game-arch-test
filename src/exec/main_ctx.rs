@@ -1,7 +1,7 @@
 use std::{num::NonZeroU32, time::Duration};
 
 use anyhow::Context;
-use glutin::surface::SwapInterval;
+use glutin::{prelude::GlConfig, surface::SwapInterval};
 use image::EncodableLayout;
 use winit::{
     dpi::PhysicalSize,
@@ -67,7 +67,11 @@ impl MainContext {
                                 gl::TexImage2D(
                                     gl::TEXTURE_2D,
                                     0,
-                                    gl::RGBA8.try_into().unwrap(),
+                                    if server.gl_config.srgb_capable() {
+                                        gl::SRGB8_ALPHA8.try_into().unwrap()
+                                    } else {
+                                        gl::RGBA8.try_into().unwrap()
+                                    },
                                     img.width().try_into().unwrap(),
                                     img.height().try_into().unwrap(),
                                     0,

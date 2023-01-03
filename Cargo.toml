@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.68"
 async-trait = "0.1.60"
+clap = { version = "4.0.32", features = ["derive"] }
 fern = { version = "0.6.1", features = ["colored"] }
 futures = "0.3.25"
 gl = "0.14.0"

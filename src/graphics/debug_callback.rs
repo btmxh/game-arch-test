@@ -1,6 +1,8 @@
-use std::{env::args, ffi::CStr, ptr::null};
+use std::{ffi::CStr, ptr::null};
 
 use gl::types::{GLenum, GLint, GLuint, GLvoid};
+
+use crate::utils::args::args;
 
 extern "system" fn debug_callback(
     source: GLenum,
@@ -60,9 +62,8 @@ extern "system" fn debug_callback(
 }
 
 pub fn enable_gl_debug_callback() -> bool {
-    let no_debug_output = args().any(|s| s == "--no-gl-debug-output");
     unsafe {
-        if no_debug_output {
+        if args().gl_disable_debug_callback {
             tracing::info!("OpenGL debug callback was explicitly turned off via command-line argument --no-gl-debug-output");
             false
         } else if gl::DebugMessageCallback::is_loaded() {

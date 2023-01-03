@@ -19,7 +19,7 @@ pub mod utils;
 
 fn main() -> anyhow::Result<()> {
     parse_args();
-    init_log()?;
+    let guard = init_log()?;
     let event_loop = EventLoopBuilder::<GameUserEvent>::with_user_event().build();
     let (display, gl_config) =
         Display::new_display(&event_loop, PhysicalSize::new(1280, 720), "hello")
@@ -49,6 +49,8 @@ fn main() -> anyhow::Result<()> {
         channels,
     )?;
     executor.run(event_loop, move |executor, e| {
+        fn unused<T>(_: &T) {}
+        unused(&guard);
         block_on(async { main_ctx.handle_event(executor, e).await })
     });
 }

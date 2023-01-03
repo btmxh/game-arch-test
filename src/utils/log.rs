@@ -1,40 +1,30 @@
-use std::{fs::File, sync::Arc};
+use std::io;
 
 use anyhow::Context;
-use tracing::metadata::LevelFilter;
+use tracing::subscriber::set_global_default;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_log::LogTracer;
 use tracing_subscriber::{
-    prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, Layer,
+    fmt::{self},
+    prelude::__tracing_subscriber_SubscriberExt,
+    EnvFilter,
 };
 
-use crate::utils::{args::args, error::ResultExt};
+use crate::utils::args::args;
 
-pub fn init_log() -> anyhow::Result<()> {
-    let stdout = tracing_subscriber::fmt::layer().pretty();
-    let log_file = args()
-        .log_file
-        .as_ref()
-        .map(File::create)
-        .and_then(|f| f.context("unable to create/open log file").log_warn());
-    match log_file {
-        Some(f) => {
-            tracing_subscriber::registry()
-                .with(
-                    stdout
-                        .with_writer(Arc::new(f))
-                        .with_filter(LevelFilter::from_level(args().log_level)),
-                )
-                .init();
-            tracing::info!(
-                "Logging to stdout and log file '{}'",
-                args().log_file.as_ref().unwrap()
-            )
-        }
-        None => {
-            tracing_subscriber::registry()
-                .with(stdout.with_filter(LevelFilter::from_level(args().log_level)))
-                .init();
-            tracing::info!("Logging to stdout only");
-        }
-    };
-    Ok(())
+pub fn init_log() -> anyhow::Result<Option<WorkerGuard>> {
+    let collector = tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env().add_directive(args().log_level.into()))
+        .with(fmt::Layer::new().with_writer(io::stdout));
+
+    LogTracer::init()?;
+    if let Some(log_file) = args().log_file.as_ref() {
+        let appender = tracing_appender::rolling::never(".", log_file);
+        let (nonblocking, guard) = tracing_appender::non_blocking(appender);
+        let collector = collector.with(fmt::Layer::new().with_ansi(false).with_writer(nonblocking));
+        set_global_default(collector).map(|_| Some(guard))
+    } else {
+        set_global_default(collector).map(|_| None)
+    }
+    .context("unable to set global logger")
 }

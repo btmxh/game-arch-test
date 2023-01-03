@@ -30,7 +30,7 @@ pub struct MainContext {
     pub vsync: bool,
     pub frequency_profiling: bool,
     pub renderer: QuadRenderer,
-    pub test_texture: TextureHandle,
+    pub test_texture: (TextureHandle, PhysicalSize<u32>),
 }
 
 impl MainContext {
@@ -54,6 +54,8 @@ impl MainContext {
                     .decode()
                     .context("unable to decode test texture")?
                     .into_rgba8();
+                let width = img.width();
+                let height = img.height();
 
                 executor
                     .execute_draw(
@@ -92,10 +94,22 @@ impl MainContext {
                             };
 
                             server.draw_tree.create_root(node_handle, move |s| {
+                                let viewport_size = s.display_size;
+                                let vw = viewport_size.width.get() as f32;
+                                let vh = viewport_size.height.get() as f32;
+                                let tw = width as f32;
+                                let th = height as f32;
+                                let var = vw / vh;
+                                let tar = tw / th;
+                                let (hw, hh) = if var < tar {
+                                    (0.5 * var / tar, 0.5)
+                                } else {
+                                    (0.5, 0.5 * tar / var)
+                                };
                                 renderer.draw(
                                     s,
                                     tex_handle,
-                                    &[[0.0f32, 1.0f32].into(), [1.0f32, 0.0f32].into()],
+                                    &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
                                 );
 
                                 Ok(())
@@ -106,7 +120,10 @@ impl MainContext {
                     )
                     .context("unable to initialize test texture (in draw server)")?;
 
-                TextureHandle::from_handle(tex_handle)
+                (
+                    TextureHandle::from_handle(tex_handle),
+                    PhysicalSize { width, height },
+                )
             },
             display,
             event_loop_proxy,

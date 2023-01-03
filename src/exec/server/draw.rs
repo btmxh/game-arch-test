@@ -150,6 +150,7 @@ impl Server {
                     new_size.height.get().try_into().unwrap(),
                 );
             }
+            self.display_size = new_size;
         }
 
         Ok(())

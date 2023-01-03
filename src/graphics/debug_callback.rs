@@ -1,4 +1,4 @@
-use std::{ffi::CStr, ptr::null};
+use std::{env::args, ffi::CStr, ptr::null};
 
 use gl::types::{GLenum, GLint, GLuint, GLvoid};
 
@@ -60,15 +60,20 @@ extern "system" fn debug_callback(
 }
 
 pub fn enable_gl_debug_callback() -> bool {
-    // unsafe {
-    //     if gl::DebugMessageCallback::is_loaded() {
-    //         gl::Enable(gl::DEBUG_OUTPUT);
-    //         gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-    //         gl::DebugMessageCallback(Some(debug_callback), null());
-    //         true
-    //     } else {
-    //         false
-    //     }
-    // }
-    false
+    let no_debug_output = args().any(|s| s == "--no-gl-debug-output");
+    unsafe {
+        if no_debug_output {
+            tracing::info!("OpenGL debug callback was explicitly turned off via command-line argument --no-gl-debug-output");
+            false
+        } else if gl::DebugMessageCallback::is_loaded() {
+            gl::Enable(gl::DEBUG_OUTPUT);
+            gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
+            gl::DebugMessageCallback(Some(debug_callback), null());
+            tracing::info!("OpenGL debug callback enabled");
+            true
+        } else {
+            tracing::info!("OpenGL debug callback not supported");
+            false
+        }
+    }
 }

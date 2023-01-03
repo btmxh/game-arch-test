@@ -78,11 +78,7 @@ impl SendServer {
             let symbol = CString::new(symbol).unwrap();
             gl_display.get_proc_address(symbol.as_c_str()).cast()
         });
-        if enable_gl_debug_callback() {
-            tracing::info!("OpenGL debug callback enabled");
-        } else {
-            tracing::info!("OpenGL debug callback not supported");
-        }
+        enable_gl_debug_callback();
         let display_size = {
             let size = display.get_size();
             PhysicalSize {

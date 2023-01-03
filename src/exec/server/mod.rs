@@ -9,8 +9,6 @@ use anyhow::Context;
 use rand::{thread_rng, Rng};
 use winit::event_loop::EventLoopProxy;
 
-use super::dispatch::{DispatchId, ReturnMechanism};
-
 pub mod audio;
 pub mod draw;
 pub mod update;
@@ -111,29 +109,6 @@ impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
         )
     }
 
-    pub fn handle_msg<F1, F2>(
-        &self,
-        ret: Option<ReturnMechanism>,
-        name: &str,
-        make_sync: F1,
-        make_event: F2,
-    ) -> anyhow::Result<()>
-    where
-        F1: FnOnce() -> SendMsg,
-        F2: FnOnce(Option<DispatchId>) -> GameUserEvent,
-    {
-        match ret {
-            Some(ReturnMechanism::Sync) => self.send(make_sync()).with_context(|| {
-                format!("unable to send {name} message for Sync return mechanism")
-            }),
-            Some(ReturnMechanism::Event(id)) => self
-                .proxy
-                .send_event(make_event(id))
-                .with_context(|| format!("unable to send {name} event for Event return mechanism")),
-            None => Ok(()),
-        }
-    }
-
     pub fn run(&mut self, server_name: &str, intended_frequency: f64) -> usize {
         if let Some(frequency) = self.frequency_profiler.update_and_get_frequency() {
             if self.frequency_profiling && thread_rng().gen::<f64>() * frequency < 1.0 {
@@ -151,4 +126,23 @@ impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
         self.timer -= run_count;
         run_count as _
     }
+}
+
+#[macro_export]
+macro_rules! handle_msg {
+    ($self: expr, $ret: expr, $name: expr, $make_sync: expr, $make_event: expr) => {
+        match $ret {
+            Some(ReturnMechanism::Sync) => $self.base.send(($make_sync)()).with_context(|| {
+                format!("unable to send {} message for Sync return mechanism", $name)
+            }),
+            Some(ReturnMechanism::Event(id)) => $self
+                .base
+                .proxy
+                .send_event(($make_event)(id))
+                .with_context(|| {
+                    format!("unable to send {} event for Event return mechanism", $name)
+                }),
+            None => Ok(()),
+        }
+    };
 }

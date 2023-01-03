@@ -2,6 +2,7 @@ use std::{num::NonZeroU32, time::Duration};
 
 use anyhow::Context;
 use glutin::surface::SwapInterval;
+use image::EncodableLayout;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -11,11 +12,13 @@ use winit::{
 use crate::{
     display::Display,
     events::{GameEvent, GameUserEvent},
+    graphics::{quad_renderer::QuadRenderer, wrappers::texture::TextureHandle},
     utils::{clock::debug_get_time, error::ResultExt},
 };
 
 use super::{
     dispatch::{DispatchId, DispatchList, ReturnMechanism},
+    executor::GameServerExecutor,
     server::ServerChannels,
 };
 
@@ -26,25 +29,96 @@ pub struct MainContext {
     pub channels: ServerChannels,
     pub vsync: bool,
     pub frequency_profiling: bool,
+    pub renderer: QuadRenderer,
+    pub test_texture: TextureHandle,
 }
 
 impl MainContext {
     pub fn new(
+        executor: &mut GameServerExecutor,
         display: Display,
         event_loop_proxy: EventLoopProxy<GameUserEvent>,
         dispatch_list: DispatchList,
-        channels: ServerChannels,
-    ) -> Self {
-        Self {
+        mut channels: ServerChannels,
+    ) -> anyhow::Result<Self> {
+        let renderer = QuadRenderer::new(executor, &mut channels.draw)
+            .context("quad renderer initialization failed")?;
+        Ok(Self {
+            renderer: renderer.clone(),
+
+            test_texture: {
+                let tex_handle = channels.draw.generate_id();
+                let node_handle = channels.draw.generate_id();
+                let img = image::io::Reader::open("BG.jpg")
+                    .context("unable to load test texture")?
+                    .decode()
+                    .context("unable to decode test texture")?
+                    .into_rgba8();
+
+                executor
+                    .execute_draw(
+                        &mut channels.draw,
+                        Some(ReturnMechanism::Sync),
+                        move |server| {
+                            let tex_handle =
+                                server.handles.create_texture("test texture", tex_handle)?;
+                            unsafe {
+                                gl::BindTexture(gl::TEXTURE_2D, tex_handle);
+                                gl::TexImage2D(
+                                    gl::TEXTURE_2D,
+                                    0,
+                                    gl::RGBA8.try_into().unwrap(),
+                                    img.width().try_into().unwrap(),
+                                    img.height().try_into().unwrap(),
+                                    0,
+                                    gl::RGBA,
+                                    gl::UNSIGNED_BYTE,
+                                    img.as_bytes().as_ptr() as *const _,
+                                );
+                                gl::TexParameteri(
+                                    gl::TEXTURE_2D,
+                                    gl::TEXTURE_MIN_FILTER,
+                                    gl::LINEAR.try_into().unwrap(),
+                                );
+                                gl::TexParameteri(
+                                    gl::TEXTURE_2D,
+                                    gl::TEXTURE_MAG_FILTER,
+                                    gl::LINEAR.try_into().unwrap(),
+                                );
+                            };
+
+                            server.draw_tree.create_root(node_handle, move |s| {
+                                renderer.draw(
+                                    s,
+                                    tex_handle,
+                                    &[[0.0f32, 1.0f32].into(), [1.0f32, 0.0f32].into()],
+                                );
+
+                                Ok(())
+                            });
+
+                            Ok(Box::new(()))
+                        },
+                    )
+                    .context("unable to initialize test texture (in draw server)")?;
+
+                TextureHandle::from_handle(tex_handle)
+            },
             display,
             event_loop_proxy,
             dispatch_list,
             channels,
             vsync: true,
             frequency_profiling: false,
-        }
+        })
     }
-    pub async fn handle_event(&mut self, event: GameEvent<'_>) -> anyhow::Result<()> {
+
+    #[allow(clippy::blocks_in_if_conditions)]
+    pub async fn handle_event(
+        &mut self,
+        executor: &mut GameServerExecutor,
+        event: GameEvent<'_>,
+    ) -> anyhow::Result<()> {
         match event {
             Event::WindowEvent {
                 window_id,
@@ -110,22 +184,24 @@ impl MainContext {
                 } else {
                     SwapInterval::DontWait
                 };
-                if let Some(Some(new_interval)) = self
-                    .channels
-                    .draw
-                    .set_vsync(interval, Some(ReturnMechanism::Sync))
+                if executor
+                    .execute_draw(
+                        &mut self.channels.draw,
+                        Some(ReturnMechanism::Sync),
+                        move |s| {
+                            s.set_swap_interval(interval)?;
+                            Ok(Box::new(()))
+                        },
+                    )
                     .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
                     .log_warn()
+                    .is_some()
                 {
-                    if interval != new_interval {
-                        tracing::warn!(
-                            "unable to set vsync swap interval to {:?}, falling back to {:?} instead",
-                            interval,
-                            new_interval
-                        );
-                    } else {
-                        tracing::info!("vsync swap interval set to {:?}", new_interval);
-                    }
+                    tracing::info!(
+                        "VSync swap interval set to {} ({:?})",
+                        interval != SwapInterval::DontWait,
+                        interval
+                    );
                 }
             }
 

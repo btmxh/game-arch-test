@@ -1,9 +1,12 @@
-use std::time::{Duration, Instant};
+use std::{
+    any::Any,
+    time::{Duration, Instant},
+};
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use winit::{
     event::Event,
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
 };
 
 use crate::{
@@ -12,17 +15,23 @@ use crate::{
 };
 
 use super::{
+    dispatch::ReturnMechanism,
     runner::{
         container::ServerContainer, MainRunner, Runner, RunnerId, ServerMover, ThreadRunnerHandle,
         MAIN_RUNNER_ID,
     },
-    server::{audio, draw, update, SendGameServer, ServerKind},
+    server::{
+        audio,
+        draw::{self, ExecuteCallbackReturnType},
+        update, GameServerChannel, SendGameServer, ServerKind,
+    },
     NUM_GAME_LOOPS,
 };
 
 pub struct GameServerExecutor {
     main_runner: MainRunner,
     thread_runners: [Option<ThreadRunnerHandle>; NUM_GAME_LOOPS],
+    proxy: EventLoopProxy<GameUserEvent>,
 }
 
 impl GameServerExecutor {
@@ -78,6 +87,7 @@ impl GameServerExecutor {
     }
 
     pub fn new(
+        proxy: EventLoopProxy<GameUserEvent>,
         audio: audio::Server,
         draw: draw::SendServer,
         update: update::Server,
@@ -96,6 +106,7 @@ impl GameServerExecutor {
                     ..Default::default()
                 },
             },
+            proxy,
         })
     }
 
@@ -118,7 +129,7 @@ impl GameServerExecutor {
 
     pub fn run<F>(mut self, event_loop: EventLoop<GameUserEvent>, mut event_handler: F) -> !
     where
-        F: FnMut(GameEvent) -> anyhow::Result<()> + 'static,
+        F: FnMut(&mut Self, GameEvent) -> anyhow::Result<()> + 'static,
     {
         event_loop.run(move |event, _target, control_flow| {
             match *control_flow {
@@ -145,8 +156,43 @@ impl GameServerExecutor {
 
                 Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
 
-                event => event_handler(event).expect("error handling events"),
+                event => event_handler(&mut self, event).expect("error handling events"),
             }
         })
+    }
+
+    #[allow(irrefutable_let_patterns)]
+    pub fn execute_draw<F>(
+        &mut self,
+        channel: &mut draw::ServerChannel,
+        ret: Option<ReturnMechanism>,
+        callback: F,
+    ) -> anyhow::Result<Option<Box<dyn Any + Send + Sync>>>
+    where
+        F: FnOnce(&mut draw::Server) -> ExecuteCallbackReturnType + Send + 'static,
+    {
+        if let Some(server) = self.main_runner.base.container.draw.as_mut() {
+            let result = callback(server);
+            match ret {
+                Some(ReturnMechanism::Event(id)) => {
+                    self.proxy
+                        .send_event(GameUserEvent::ExecuteReturn(result, id))
+                        .context("unable to send ExecuteReturn event for Event return mechanism")?;
+                }
+                Some(ReturnMechanism::Sync) => return result.map(Some),
+                _ => {}
+            }
+        } else {
+            channel.send(draw::RecvMsg::Execute(Box::new(callback), ret))?;
+            if let Some(ReturnMechanism::Sync) = ret {
+                if let draw::SendMsg::ExecuteReturn(result) = channel.recv()? {
+                    return result.map(Some);
+                } else {
+                    bail!("unexpected response message from thread");
+                }
+            }
+        }
+
+        Ok(None)
     }
 }

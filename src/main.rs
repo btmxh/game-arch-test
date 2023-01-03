@@ -5,8 +5,7 @@ use exec::{
     dispatch::DispatchList,
     executor::GameServerExecutor,
     main_ctx::MainContext,
-    runner::MAIN_RUNNER_ID,
-    server::{audio, draw, update, ServerChannels, ServerKind},
+    server::{audio, draw, update, ServerChannels},
 };
 use futures::executor::block_on;
 use utils::log::init_log;
@@ -15,8 +14,8 @@ use winit::{dpi::PhysicalSize, event_loop::EventLoopBuilder};
 pub mod display;
 pub mod events;
 pub mod exec;
-pub mod utils;
 pub mod graphics;
+pub mod utils;
 
 fn main() -> anyhow::Result<()> {
     init_log()?;
@@ -29,7 +28,7 @@ fn main() -> anyhow::Result<()> {
             .context("unable to initialize draw server")?;
     let (audio, audio_channels) = audio::Server::new(event_loop.create_proxy());
     let (update, update_channels) = update::Server::new(event_loop.create_proxy());
-    let mut executor = GameServerExecutor::new(audio, draw, update)?;
+    let mut executor = GameServerExecutor::new(event_loop.create_proxy(), audio, draw, update)?;
     let event_loop_proxy = event_loop.create_proxy();
     let channels = ServerChannels {
         audio: audio_channels,
@@ -37,12 +36,18 @@ fn main() -> anyhow::Result<()> {
         update: update_channels,
     };
     let dispatch_list = DispatchList::new();
-    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
-    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
-    executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
-    executor.set_frequency(0, 1000.0)?;
-    let mut main_ctx = MainContext::new(display, event_loop_proxy, dispatch_list, channels);
-    executor.run(event_loop, move |e| {
-        block_on(async { main_ctx.handle_event(e).await })
+    // executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
+    // executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
+    // executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
+    // executor.set_frequency(0, 1000.0)?;
+    let mut main_ctx = MainContext::new(
+        &mut executor,
+        display,
+        event_loop_proxy,
+        dispatch_list,
+        channels,
+    )?;
+    executor.run(event_loop, move |executor, e| {
+        block_on(async { main_ctx.handle_event(executor, e).await })
     });
 }

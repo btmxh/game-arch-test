@@ -9,7 +9,7 @@ use gl::types::{GLchar, GLenum, GLuint};
 
 use crate::{exec::server::draw, graphics::GfxHandle};
 
-use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
 pub struct ShaderTrait;
 pub enum ShaderType {
@@ -36,6 +36,7 @@ impl GLHandleTrait<ShaderType> for ShaderTrait {
 pub struct ProgramTrait;
 pub type Program = GLHandle<ProgramTrait>;
 pub type ProgramContainer = GLHandleContainer<ProgramTrait>;
+pub type SendProgramContainer = SendGLHandleContainer<ProgramTrait>;
 pub type ProgramHandle = GLGfxHandle<ProgramTrait>;
 
 impl GLHandleTrait for ProgramTrait {

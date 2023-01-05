@@ -13,6 +13,7 @@ impl<T> IntoAnyhowError for super::mpsc::SendError<T> {
 pub trait ResultExt<T> {
     fn log_error(self) -> Option<T>;
     fn log_warn(self) -> Option<T>;
+    fn log_info(self) -> Option<T>;
 }
 
 impl<T, E: Display> ResultExt<T> for Result<T, E> {
@@ -31,6 +32,16 @@ impl<T, E: Display> ResultExt<T> for Result<T, E> {
             Ok(value) => Some(value),
             Err(err) => {
                 tracing::warn!("{}", err);
+                None
+            }
+        }
+    }
+
+    fn log_info(self) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(err) => {
+                tracing::info!("{}", err);
                 None
             }
         }

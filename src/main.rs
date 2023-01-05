@@ -38,10 +38,10 @@ fn main() -> anyhow::Result<()> {
         update: update_channels,
     };
     let dispatch_list = DispatchList::new();
-    // executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
-    // executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
-    // executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
-    // executor.set_frequency(0, 1000.0)?;
+    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
+    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
+    executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
+    executor.set_frequency(0, 1000.0)?;
     let mut main_ctx = MainContext::new(
         &mut executor,
         display,

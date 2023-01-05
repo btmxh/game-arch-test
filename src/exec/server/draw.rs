@@ -1,7 +1,10 @@
 use crate::{
     events::GameUserEvent,
     exec::dispatch::ReturnMechanism,
-    graphics::{debug_callback::enable_gl_debug_callback, tree::DrawTree, HandleContainer},
+    graphics::{
+        debug_callback::enable_gl_debug_callback, tree::DrawTree, HandleContainer,
+        SendHandleContainer,
+    },
     handle_msg,
     utils::{
         error::ResultExt,
@@ -51,7 +54,7 @@ pub struct Server {
 
 pub struct SendServer {
     pub draw_tree: DrawTree,
-    pub handles: HandleContainer,
+    pub handles: SendHandleContainer,
     pub swap_interval: SwapInterval,
     pub gl_context: NotCurrentContext,
     pub gl_display: Display,
@@ -96,7 +99,7 @@ impl SendServer {
                 gl_context,
                 gl_config,
                 swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
-                handles: HandleContainer::new(),
+                handles: SendHandleContainer::new(),
                 draw_tree: DrawTree::new(),
             },
             ServerChannel {
@@ -173,7 +176,7 @@ impl GameServer for Server {
             display_handles: self.display_handles,
             display_size: self.display_size,
             swap_interval: self.swap_interval,
-            handles: self.handles,
+            handles: self.handles.to_send(),
             draw_tree: self.draw_tree,
         }))
     }
@@ -226,7 +229,7 @@ impl SendGameServer for SendServer {
             display_handles: self.display_handles,
             display_size: self.display_size,
             swap_interval: self.swap_interval,
-            handles: self.handles,
+            handles: self.handles.to_unsend(),
             draw_tree: self.draw_tree,
         })
     }

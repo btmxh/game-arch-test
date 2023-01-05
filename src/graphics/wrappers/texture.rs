@@ -2,11 +2,12 @@ use gl::types::{GLenum, GLuint};
 
 use crate::exec::server::draw;
 
-use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
 pub struct TextureTrait;
 pub type Texture = GLHandle<TextureTrait>;
 pub type TextureContainer = GLHandleContainer<TextureTrait>;
+pub type SendTextureContainer = SendGLHandleContainer<TextureTrait>;
 pub type TextureHandle = GLGfxHandle<TextureTrait>;
 
 impl GLHandleTrait for TextureTrait {

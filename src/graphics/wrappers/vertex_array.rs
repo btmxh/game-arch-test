@@ -2,11 +2,12 @@ use gl::types::{GLenum, GLuint};
 
 use crate::exec::server::draw;
 
-use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
 pub struct VertexArrayTrait;
 pub type VertexArray = GLHandle<VertexArrayTrait>;
 pub type VertexArrayContainer = GLHandleContainer<VertexArrayTrait>;
+pub type SendVertexArrayContainer = SendGLHandleContainer<VertexArrayTrait>;
 pub type VertexArrayHandle = GLGfxHandle<VertexArrayTrait>;
 
 impl GLHandleTrait for VertexArrayTrait {

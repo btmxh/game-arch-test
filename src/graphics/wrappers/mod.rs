@@ -1,10 +1,15 @@
 use std::{
-    borrow::Cow, collections::HashMap, ffi::CString, marker::PhantomData, ops::Deref, sync::Arc,
+    borrow::Cow,
+    collections::HashMap,
+    ffi::CString,
+    marker::PhantomData,
+    ops::Deref,
+    sync::{Arc, MutexGuard},
 };
 
 use anyhow::{bail, Context};
 use gl::types::{GLenum, GLuint};
-use sendable::SendRc;
+use sendable::{send_rc::PostSend, SendRc};
 
 use crate::{
     exec::server::{draw, GameServerChannel},
@@ -87,8 +92,8 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
                 None,
             ))
             .map_err(|e| anyhow::format_err!("{}", e))
-            .context("unable to drop GL handle")
-            .log_warn();
+            .context("unable to send GL handle drop execute message to draw server, the connection was closed (the handles were probably dropped with the server earlier, if so this is not a leak)")
+            .log_info();
     }
 }
 
@@ -114,11 +119,11 @@ impl<T: GLHandleTrait<A>, A> Deref for GLHandle<T, A> {
     }
 }
 
-impl<T: GLHandleTrait<A>, A> Drop for GLHandle<T, A> {
+impl<T: GLHandleTrait<A>, A> Drop for GLHandleInner<T, A> {
     fn drop(&mut self) {
-        let handle = **self;
+        let handle = self.gl_handle;
         if handle != 0 {
-            T::delete(**self)
+            T::delete(handle)
         }
     }
 }
@@ -165,7 +170,21 @@ impl<T: GLHandleTrait<()>> GLHandle<T> {
     }
 }
 
-pub struct GLHandleContainer<T: GLHandleTrait<A>, A = ()>(HashMap<u64, GLHandle<T, A>>);
+pub struct GLHandleContainer<T: GLHandleTrait<A>, A = ()>(
+    HashMap<u64, GLHandle<T, A>>,
+    PhantomData<MutexGuard<'static, ()>>, // impl !Send
+);
+
+pub struct SendGLHandleContainer<T: GLHandleTrait<A>, A = ()>(
+    HashMap<u64, GLHandle<T, A>>,
+    PostSend<GLHandleInner<T, A>>,
+);
+
+impl<T: GLHandleTrait<A>, A> Default for SendGLHandleContainer<T, A> {
+    fn default() -> Self {
+        Self(HashMap::new(), SendRc::pre_send().ready())
+    }
+}
 
 impl<T: GLHandleTrait<A>, A> Drop for GLHandleContainer<T, A> {
     fn drop(&mut self) {
@@ -176,9 +195,18 @@ impl<T: GLHandleTrait<A>, A> Drop for GLHandleContainer<T, A> {
     }
 }
 
+impl<T: GLHandleTrait<A>, A> Drop for SendGLHandleContainer<T, A> {
+    fn drop(&mut self) {
+        T::delete_mul(self.0.values().map(|h| **h).collect::<Vec<_>>().as_slice());
+        let mut empty_map = HashMap::new();
+        std::mem::swap(&mut self.0, &mut empty_map);
+        std::mem::forget(empty_map);
+    }
+}
+
 impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self(HashMap::new(), PhantomData)
     }
 
     fn handle_to_key(handle: &GLGfxHandle<T, A>) -> u64 {
@@ -198,6 +226,24 @@ impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
 
     pub fn get(&self, gfx_handle: &GLGfxHandle<T, A>) -> Option<GLHandle<T, A>> {
         self.0.get(&Self::handle_to_key(gfx_handle)).cloned()
+    }
+
+    pub fn to_send(mut self) -> SendGLHandleContainer<T, A> {
+        let presend = SendRc::pre_send();
+        for value in self.0.values_mut() {
+            presend.park(&mut value.0);
+        }
+        let token = presend.ready();
+        SendGLHandleContainer(std::mem::take(&mut self.0), token)
+    }
+}
+
+impl<T: GLHandleTrait<A>, A> SendGLHandleContainer<T, A> {
+    pub fn to_unsend(mut self) -> GLHandleContainer<T, A> {
+        let map = std::mem::take(&mut self.0);
+        let token = std::mem::replace(&mut self.1, SendRc::pre_send().ready());
+        token.unpark();
+        GLHandleContainer(map, PhantomData)
     }
 }
 

@@ -2,11 +2,12 @@ use gl::types::{GLenum, GLuint};
 
 use crate::exec::server::draw;
 
-use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
 pub struct BufferTrait;
 pub type Buffer = GLHandle<BufferTrait>;
 pub type BufferContainer = GLHandleContainer<BufferTrait>;
+pub type SendBufferContainer = SendGLHandleContainer<BufferTrait>;
 pub type BufferHandle = GLGfxHandle<BufferTrait>;
 
 impl GLHandleTrait for BufferTrait {

@@ -5,11 +5,13 @@ use gl::types::GLuint;
 use crate::exec::server::draw;
 
 use self::wrappers::{
-    buffer::{Buffer, BufferContainer, BufferHandle},
-    framebuffer::{Framebuffer, FramebufferContainer, FramebufferHandle},
-    shader::{Program, ProgramContainer, ProgramHandle},
-    texture::{Texture, TextureContainer, TextureHandle},
-    vertex_array::{VertexArray, VertexArrayContainer, VertexArrayHandle},
+    buffer::{Buffer, BufferContainer, BufferHandle, SendBufferContainer},
+    framebuffer::{Framebuffer, FramebufferContainer, FramebufferHandle, SendFramebufferContainer},
+    shader::{Program, ProgramContainer, ProgramHandle, SendProgramContainer},
+    texture::{SendTextureContainer, Texture, TextureContainer, TextureHandle},
+    vertex_array::{
+        SendVertexArrayContainer, VertexArray, VertexArrayContainer, VertexArrayHandle,
+    },
 };
 
 pub mod blur;
@@ -71,6 +73,15 @@ pub struct HandleContainer {
     framebuffers: FramebufferContainer,
 }
 
+#[derive(Default)]
+pub struct SendHandleContainer {
+    vertex_arrays: SendVertexArrayContainer,
+    buffers: SendBufferContainer,
+    textures: SendTextureContainer,
+    programs: SendProgramContainer,
+    framebuffers: SendFramebufferContainer,
+}
+
 impl HandleContainer {
     pub fn new() -> Self {
         Self::default()
@@ -116,5 +127,31 @@ impl HandleContainer {
         handle: FramebufferHandle,
     ) -> anyhow::Result<GLuint> {
         Framebuffer::new(name).map(|f| self.framebuffers.insert(handle, f))
+    }
+
+    pub fn to_send(self) -> SendHandleContainer {
+        SendHandleContainer {
+            vertex_arrays: self.vertex_arrays.to_send(),
+            buffers: self.buffers.to_send(),
+            textures: self.textures.to_send(),
+            programs: self.programs.to_send(),
+            framebuffers: self.framebuffers.to_send(),
+        }
+    }
+}
+
+impl SendHandleContainer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn to_unsend(self) -> HandleContainer {
+        HandleContainer {
+            vertex_arrays: self.vertex_arrays.to_unsend(),
+            buffers: self.buffers.to_unsend(),
+            textures: self.textures.to_unsend(),
+            programs: self.programs.to_unsend(),
+            framebuffers: self.framebuffers.to_unsend(),
+        }
     }
 }

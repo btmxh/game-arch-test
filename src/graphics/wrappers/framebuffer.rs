@@ -2,11 +2,12 @@ use gl::types::{GLenum, GLuint};
 
 use crate::exec::server::draw;
 
-use super::{texture::TextureHandle, GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{texture::TextureHandle, GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
 pub struct FramebufferTrait;
 pub type Framebuffer = GLHandle<FramebufferTrait>;
 pub type FramebufferContainer = GLHandleContainer<FramebufferTrait>;
+pub type SendFramebufferContainer = SendGLHandleContainer<FramebufferTrait>;
 pub type FramebufferHandle = GLGfxHandle<FramebufferTrait>;
 
 impl GLHandleTrait for FramebufferTrait {

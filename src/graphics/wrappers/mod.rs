@@ -3,12 +3,13 @@ use std::{
     collections::HashMap,
     ffi::CString,
     marker::PhantomData,
-    ops::{Deref, DerefMut},
-    sync::Arc,
+    ops::Deref,
+    sync::{Arc, MutexGuard},
 };
 
 use anyhow::{bail, Context};
 use gl::types::{GLenum, GLuint};
+use sendable::{send_rc::PostSend, SendRc};
 
 use crate::{
     exec::server::{draw, GameServerChannel},
@@ -46,11 +47,20 @@ pub trait GLHandleTrait<A = ()> {
     }
 }
 
-pub struct GLHandle<T: GLHandleTrait<A>, A = ()> {
+pub struct GLHandleInner<T: GLHandleTrait<A>, A = ()> {
     gl_handle: GLuint,
     name: Cow<'static, str>,
     _phantom: PhantomData<(T, A)>,
 }
+
+pub struct GLHandle<T: GLHandleTrait<A>, A = ()>(SendRc<GLHandleInner<T, A>>);
+
+impl<T: GLHandleTrait<A>, A> Clone for GLHandle<T, A> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 pub struct GLGfxHandle<T: GLHandleTrait<A> + 'static, A: 'static = ()>(
     pub Arc<GLGfxHandleInner<T, A>>,
 );
@@ -82,8 +92,8 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
                 None,
             ))
             .map_err(|e| anyhow::format_err!("{}", e))
-            .context("unable to drop GL handle")
-            .log_warn();
+            .context("unable to send GL handle drop execute message to draw server, the connection was closed (the handles were probably dropped with the server earlier, if so this is not a leak)")
+            .log_info();
     }
 }
 
@@ -96,7 +106,7 @@ impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
         }))
     }
 
-    pub fn get(&self, server: &draw::Server) -> Option<GLuint> {
+    pub fn get(&self, server: &draw::Server) -> Option<GLHandle<T, A>> {
         T::get_container(server).unwrap().get(self)
     }
 }
@@ -105,21 +115,15 @@ impl<T: GLHandleTrait<A>, A> Deref for GLHandle<T, A> {
     type Target = GLuint;
 
     fn deref(&self) -> &Self::Target {
-        &self.gl_handle
+        &self.0.gl_handle
     }
 }
 
-impl<T: GLHandleTrait<A>, A> DerefMut for GLHandle<T, A> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.gl_handle
-    }
-}
-
-impl<T: GLHandleTrait<A>, A> Drop for GLHandle<T, A> {
+impl<T: GLHandleTrait<A>, A> Drop for GLHandleInner<T, A> {
     fn drop(&mut self) {
-        let handle = **self;
+        let handle = self.gl_handle;
         if handle != 0 {
-            T::delete(**self)
+            T::delete(handle)
         }
     }
 }
@@ -148,15 +152,15 @@ impl<T: GLHandleTrait<A>, A> GLHandle<T, A> {
     }
 
     pub fn wrap(gl_handle: GLuint, name: Cow<'static, str>) -> Self {
-        Self {
+        Self(SendRc::new(GLHandleInner {
             gl_handle,
             name,
             _phantom: PhantomData,
-        }
+        }))
     }
 
     pub fn name(&self) -> Cow<'static, str> {
-        self.name.clone()
+        self.0.name.clone()
     }
 }
 
@@ -166,17 +170,34 @@ impl<T: GLHandleTrait<()>> GLHandle<T> {
     }
 }
 
-pub struct GLHandleContainer<T: GLHandleTrait<A>, A = ()>(HashMap<u64, GLHandle<T, A>>);
+pub struct GLHandleContainer<T: GLHandleTrait<A>, A = ()>(
+    HashMap<u64, GLHandle<T, A>>,
+    PhantomData<MutexGuard<'static, ()>>, // impl !Send
+);
+
+pub struct SendGLHandleContainer<T: GLHandleTrait<A>, A = ()>(
+    HashMap<u64, GLHandle<T, A>>,
+    PostSend<GLHandleInner<T, A>>,
+);
+
+impl<T: GLHandleTrait<A>, A> Default for SendGLHandleContainer<T, A> {
+    fn default() -> Self {
+        Self(HashMap::new(), SendRc::pre_send().ready())
+    }
+}
 
 impl<T: GLHandleTrait<A>, A> Drop for GLHandleContainer<T, A> {
     fn drop(&mut self) {
-        T::delete_mul(
-            self.0
-                .values()
-                .map(|h| h.gl_handle)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
+        T::delete_mul(self.0.values().map(|h| **h).collect::<Vec<_>>().as_slice());
+        let mut empty_map = HashMap::new();
+        std::mem::swap(&mut self.0, &mut empty_map);
+        std::mem::forget(empty_map);
+    }
+}
+
+impl<T: GLHandleTrait<A>, A> Drop for SendGLHandleContainer<T, A> {
+    fn drop(&mut self) {
+        T::delete_mul(self.0.values().map(|h| **h).collect::<Vec<_>>().as_slice());
         let mut empty_map = HashMap::new();
         std::mem::swap(&mut self.0, &mut empty_map);
         std::mem::forget(empty_map);
@@ -185,7 +206,7 @@ impl<T: GLHandleTrait<A>, A> Drop for GLHandleContainer<T, A> {
 
 impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self(HashMap::new(), PhantomData)
     }
 
     fn handle_to_key(handle: &GLGfxHandle<T, A>) -> u64 {
@@ -193,7 +214,7 @@ impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
     }
 
     pub fn insert(&mut self, gfx_handle: GLGfxHandle<T, A>, handle: GLHandle<T, A>) -> GLuint {
-        let gl_handle = handle.gl_handle;
+        let gl_handle = *handle;
         let old_value = self.0.insert(Self::handle_to_key(&gfx_handle), handle);
         debug_assert!(old_value.is_none());
         gl_handle
@@ -203,10 +224,26 @@ impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
         self.0.remove(&gfx_handle.handle)
     }
 
-    pub fn get(&self, gfx_handle: &GLGfxHandle<T, A>) -> Option<GLuint> {
-        self.0
-            .get(&Self::handle_to_key(gfx_handle))
-            .map(|h| h.gl_handle)
+    pub fn get(&self, gfx_handle: &GLGfxHandle<T, A>) -> Option<GLHandle<T, A>> {
+        self.0.get(&Self::handle_to_key(gfx_handle)).cloned()
+    }
+
+    pub fn to_send(mut self) -> SendGLHandleContainer<T, A> {
+        let presend = SendRc::pre_send();
+        for value in self.0.values_mut() {
+            presend.park(&mut value.0);
+        }
+        let token = presend.ready();
+        SendGLHandleContainer(std::mem::take(&mut self.0), token)
+    }
+}
+
+impl<T: GLHandleTrait<A>, A> SendGLHandleContainer<T, A> {
+    pub fn to_unsend(mut self) -> GLHandleContainer<T, A> {
+        let map = std::mem::take(&mut self.0);
+        let token = std::mem::replace(&mut self.1, SendRc::pre_send().ready());
+        token.unpark();
+        GLHandleContainer(map, PhantomData)
     }
 }
 

@@ -1,13 +1,13 @@
 use gl::types::{GLenum, GLuint};
 
-use crate::{graphics::GfxHandle, exec::server::draw};
+use crate::exec::server::draw;
 
-use super::{GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
 
 pub struct TextureTrait;
-pub type Texture = GLHandle<TextureTrait, ()>;
-pub type TextureContainer = GLHandleContainer<TextureTrait, ()>;
-pub type TextureHandle = GfxHandle<Texture>;
+pub type Texture = GLHandle<TextureTrait>;
+pub type TextureContainer = GLHandleContainer<TextureTrait>;
+pub type TextureHandle = GLGfxHandle<TextureTrait>;
 
 impl GLHandleTrait for TextureTrait {
     fn create(_: ()) -> GLuint {
@@ -27,10 +27,14 @@ impl GLHandleTrait for TextureTrait {
     fn delete_mul(handles: &[GLuint]) {
         unsafe { gl::DeleteTextures(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
-}
 
-impl TextureHandle {
-    pub fn get(&self, server: &draw::Server) -> Option<GLuint> {
-        server.handles.textures.get(self.handle)
+    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>>
+    {
+        Some(&mut server.handles.textures)
+    }
+
+    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>>
+    {
+        Some(&server.handles.textures)
     }
 }

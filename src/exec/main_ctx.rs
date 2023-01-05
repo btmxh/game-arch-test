@@ -12,8 +12,12 @@ use winit::{
 use crate::{
     display::Display,
     events::{GameEvent, GameUserEvent},
-    graphics::{quad_renderer::QuadRenderer, wrappers::texture::TextureHandle},
-    utils::{clock::debug_get_time, error::ResultExt},
+    graphics::{
+        blur::BlurRenderer,
+        quad_renderer::QuadRenderer,
+        wrappers::{texture::TextureHandle, vertex_array::VertexArrayHandle},
+    },
+    utils::{clock::debug_get_time, enclose::enclose, error::ResultExt},
 };
 
 use super::{
@@ -23,17 +27,20 @@ use super::{
 };
 
 pub struct MainContext {
-    pub display: Display,
-    pub event_loop_proxy: EventLoopProxy<GameUserEvent>,
-    pub dispatch_list: DispatchList,
-    pub channels: ServerChannels,
-    pub vsync: bool,
-    pub frequency_profiling: bool,
-    pub renderer: QuadRenderer,
     pub test_texture: (TextureHandle, PhysicalSize<u32>),
+    pub blur: BlurRenderer,
+    pub renderer: QuadRenderer,
+    pub dummy_vao: VertexArrayHandle,
+    pub frequency_profiling: bool,
+    pub vsync: bool,
+    pub channels: ServerChannels,
+    pub dispatch_list: DispatchList,
+    pub event_loop_proxy: EventLoopProxy<GameUserEvent>,
+    pub display: Display,
 }
 
 impl MainContext {
+    #[allow(unused_mut)]
     pub fn new(
         executor: &mut GameServerExecutor,
         display: Display,
@@ -41,97 +48,165 @@ impl MainContext {
         dispatch_list: DispatchList,
         mut channels: ServerChannels,
     ) -> anyhow::Result<Self> {
-        let renderer = QuadRenderer::new(executor, &mut channels.draw)
+        let dummy_vao = {
+            let vertex_array = VertexArrayHandle::new(&mut channels.draw);
+            executor.execute_draw(
+                &mut channels.draw,
+                Some(ReturnMechanism::Sync),
+                enclose!((vertex_array) move |s| {
+                    s.handles
+                        .create_vertex_array("dummy vertex array", vertex_array)?;
+                    Ok(Box::new(()))
+                }),
+            )?;
+            vertex_array
+        };
+        let renderer = QuadRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
             .context("quad renderer initialization failed")?;
-        Ok(Self {
-            renderer: renderer.clone(),
+        let blur = BlurRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
+            .context("blur renderer initialization failed")?;
+        let window_size = display.get_size();
 
-            test_texture: {
-                let tex_handle = channels.draw.generate_id();
-                let node_handle = channels.draw.generate_id();
-                let img = image::io::Reader::open("BG.jpg")
-                    .context("unable to load test texture")?
-                    .decode()
-                    .context("unable to decode test texture")?
-                    .into_rgba8();
-                let width = img.width();
-                let height = img.height();
+        let test_texture = TextureHandle::new(&mut channels.draw);
+        let img = image::io::Reader::open("BG.jpg")
+            .context("unable to load test texture")?
+            .decode()
+            .context("unable to decode test texture")?
+            .into_rgba8();
+        let width = img.width();
+        let height = img.height();
 
-                executor
-                    .execute_draw(
-                        &mut channels.draw,
-                        Some(ReturnMechanism::Sync),
-                        move |server| {
-                            let tex_handle =
-                                server.handles.create_texture("test texture", tex_handle)?;
-                            unsafe {
-                                gl::BindTexture(gl::TEXTURE_2D, tex_handle);
-                                gl::TexImage2D(
-                                    gl::TEXTURE_2D,
-                                    0,
-                                    if server.gl_config.srgb_capable() {
-                                        gl::SRGB8_ALPHA8.try_into().unwrap()
-                                    } else {
-                                        gl::RGBA8.try_into().unwrap()
-                                    },
-                                    img.width().try_into().unwrap(),
-                                    img.height().try_into().unwrap(),
-                                    0,
-                                    gl::RGBA,
-                                    gl::UNSIGNED_BYTE,
-                                    img.as_bytes().as_ptr() as *const _,
-                                );
-                                gl::TexParameteri(
-                                    gl::TEXTURE_2D,
-                                    gl::TEXTURE_MIN_FILTER,
-                                    gl::LINEAR.try_into().unwrap(),
-                                );
-                                gl::TexParameteri(
-                                    gl::TEXTURE_2D,
-                                    gl::TEXTURE_MAG_FILTER,
-                                    gl::LINEAR.try_into().unwrap(),
-                                );
-                            };
+        executor
+            .execute_draw(
+                &mut channels.draw,
+                Some(ReturnMechanism::Sync),
+                enclose!((test_texture) move |server| {
+                    let tex_handle = server
+                        .handles
+                        .create_texture("test texture", test_texture)?;
+                    unsafe {
+                        gl::BindTexture(gl::TEXTURE_2D, tex_handle);
+                        gl::TexImage2D(
+                            gl::TEXTURE_2D,
+                            0,
+                            if server.gl_config.srgb_capable() {
+                                gl::SRGB8_ALPHA8.try_into().unwrap()
+                            } else {
+                                gl::RGBA8.try_into().unwrap()
+                            },
+                            img.width().try_into().unwrap(),
+                            img.height().try_into().unwrap(),
+                            0,
+                            gl::RGBA,
+                            gl::UNSIGNED_BYTE,
+                            img.as_bytes().as_ptr() as *const _,
+                        );
+                        gl::TexParameteri(
+                            gl::TEXTURE_2D,
+                            gl::TEXTURE_MIN_FILTER,
+                            gl::LINEAR_MIPMAP_LINEAR.try_into().unwrap(),
+                        );
+                        gl::TexParameteri(
+                            gl::TEXTURE_2D,
+                            gl::TEXTURE_MAG_FILTER,
+                            gl::LINEAR.try_into().unwrap(),
+                        );
+                        gl::GenerateMipmap(gl::TEXTURE_2D);
+                    };
+                    Ok(Box::new(()))
+                }),
+            )
+            .context("unable to initialize test texture (in draw server)")?;
 
-                            server.draw_tree.create_root(node_handle, move |s| {
-                                let viewport_size = s.display_size;
-                                let vw = viewport_size.width.get() as f32;
-                                let vh = viewport_size.height.get() as f32;
-                                let tw = width as f32;
-                                let th = height as f32;
-                                let var = vw / vh;
-                                let tar = tw / th;
-                                let (hw, hh) = if var < tar {
-                                    (0.5 * var / tar, 0.5)
-                                } else {
-                                    (0.5, 0.5 * tar / var)
-                                };
-                                renderer.draw(
-                                    s,
-                                    tex_handle,
-                                    &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                                );
+        let node_handle = channels.draw.generate_id();
+        executor.execute_draw(
+            &mut channels.draw,
+            Some(ReturnMechanism::Sync),
+            enclose!((test_texture, blur, renderer) move |server| {
+                blur.redraw(
+                    server,
+                    window_size,
+                    test_texture.get(server).unwrap(),
+                    1.0,
+                    3.0,
+                )?;
 
-                                Ok(())
-                            });
+                server.draw_tree.create_root(node_handle, enclose!((blur, renderer) move |server| {
+                    let viewport_size = server.display_size;
+                    let vw = viewport_size.width.get() as f32;
+                    let vh = viewport_size.height.get() as f32;
+                    let tw = width as f32;
+                    let th = height as f32;
+                    let var = vw / vh;
+                    let tar = tw / th;
+                    let (hw, hh) = if var < tar {
+                        (0.5 * var / tar, 0.5)
+                    } else {
+                        (0.5, 0.5 * tar / var)
+                    };
+                    renderer.draw(
+                        server,
+                        blur.output_texture_handle().get(server).unwrap(),
+                        &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
+                    );
 
-                            Ok(Box::new(()))
-                        },
-                    )
-                    .context("unable to initialize test texture (in draw server)")?;
+                    Ok(())
+                }));
 
-                (
-                    TextureHandle::from_handle(tex_handle),
-                    PhysicalSize { width, height },
-                )
-            },
+                Ok(Box::new(()))
+            }),
+        )?;
+
+        let slf = Self {
+            renderer,
+            blur,
+            dummy_vao,
+            test_texture: (test_texture, PhysicalSize { width, height }),
             display,
             event_loop_proxy,
             dispatch_list,
             channels,
             vsync: true,
             frequency_profiling: false,
-        })
+        };
+        Ok(slf)
+    }
+
+    fn update_blur_texture(
+        &mut self,
+        executor: &mut GameServerExecutor,
+        window_size: PhysicalSize<u32>,
+        blur_factor: f32,
+    ) -> anyhow::Result<()> {
+        let test_texture = self.test_texture.0.clone();
+        let mut blur = self.blur.clone();
+        // let renderer = self.renderer.clone();
+        executor.execute_draw(
+            &mut self.channels.draw,
+            Some(ReturnMechanism::Sync),
+            move |server| {
+                blur.redraw(
+                    server,
+                    window_size,
+                    test_texture.get(server).unwrap(),
+                    0.0,
+                    blur_factor,
+                )?;
+
+                unsafe {
+                    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                    gl::Viewport(
+                        0,
+                        0,
+                        window_size.width.try_into().unwrap(),
+                        window_size.height.try_into().unwrap(),
+                    );
+                };
+
+                Ok(Box::new(()))
+            },
+        )?;
+        Ok(())
     }
 
     #[allow(clippy::blocks_in_if_conditions)]
@@ -157,6 +232,7 @@ impl MainContext {
                 if let Some(width) = width {
                     if let Some(height) = height {
                         self.channels.draw.resize(PhysicalSize { width, height })?;
+                        self.update_blur_texture(executor, size, 32.0)?;
                     }
                 }
             }

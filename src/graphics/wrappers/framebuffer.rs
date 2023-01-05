@@ -1,16 +1,13 @@
-use std::mem::swap;
-
-use anyhow::Ok;
 use gl::types::{GLenum, GLuint};
 
-use crate::{graphics::GfxHandle, exec::server::draw};
+use crate::exec::server::draw;
 
-use super::{GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{texture::TextureHandle, GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
 
 pub struct FramebufferTrait;
-pub type Framebuffer = GLHandle<FramebufferTrait, ()>;
-pub type FramebufferContainer = GLHandleContainer<FramebufferTrait, ()>;
-pub type FramebufferHandle = GfxHandle<Framebuffer>;
+pub type Framebuffer = GLHandle<FramebufferTrait>;
+pub type FramebufferContainer = GLHandleContainer<FramebufferTrait>;
+pub type FramebufferHandle = GLGfxHandle<FramebufferTrait>;
 
 impl GLHandleTrait for FramebufferTrait {
     fn create(_: ()) -> GLuint {
@@ -30,18 +27,17 @@ impl GLHandleTrait for FramebufferTrait {
     fn delete_mul(handles: &[GLuint]) {
         unsafe { gl::DeleteFramebuffers(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
-}
 
-impl Framebuffer {
-    pub fn recreate(&mut self, name: &str) -> anyhow::Result<Framebuffer> {
-        let mut new_fb = Framebuffer::new_default(name)?;
-        swap(&mut self.0, &mut new_fb.0);
-        Ok(new_fb)
+    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
+        Some(&mut server.handles.framebuffers)
+    }
+
+    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>> {
+        Some(&server.handles.framebuffers)
     }
 }
 
-impl FramebufferHandle {
-    pub fn get(&self, server: &draw::Server) -> Option<GLuint> {
-        server.handles.framebuffers.get(self.handle)
-    }
+pub struct DefaultTextureFramebuffer {
+    pub texture: TextureHandle,
+    pub framebuffer: FramebufferHandle,
 }

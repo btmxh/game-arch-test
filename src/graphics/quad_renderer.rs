@@ -6,10 +6,7 @@ use glsl_layout::vec2;
 
 use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
 
-use super::{
-    wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle},
-    GfxHandle,
-};
+use super::wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle};
 
 mod shader {
     pub const VERTEX: &str = r#"
@@ -48,24 +45,21 @@ pub struct QuadRenderer {
 impl QuadRenderer {
     pub fn new(
         executor: &mut GameServerExecutor,
+        dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
     ) -> anyhow::Result<Self> {
-        let id = draw.generate_multi_ids(2);
-        let vertex_array_handle = id;
-        let program_handle = id + 1;
+        let program = ProgramHandle::new(draw);
+        let program_clone = program.clone();
         let slf = Self {
-            vertex_array: GfxHandle::from_handle(vertex_array_handle),
-            program: GfxHandle::from_handle(program_handle),
+            vertex_array: dummy_vao,
+            program,
         };
 
         executor
             .execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
-                server
-                    .handles
-                    .create_vertex_array("quad renderer VAO", vertex_array_handle)?;
                 server.handles.create_vf_program(
                     "quad renderer shader program",
-                    program_handle,
+                    program_clone,
                     shader::VERTEX,
                     shader::FRAGMENT,
                 )?;

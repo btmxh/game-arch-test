@@ -1,13 +1,13 @@
 use gl::types::{GLenum, GLuint};
 
-use crate::{exec::server::draw, graphics::GfxHandle};
+use crate::exec::server::draw;
 
-use super::{GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
 
 pub struct VertexArrayTrait;
-pub type VertexArray = GLHandle<VertexArrayTrait, ()>;
-pub type VertexArrayContainer = GLHandleContainer<VertexArrayTrait, ()>;
-pub type VertexArrayHandle = GfxHandle<VertexArray>;
+pub type VertexArray = GLHandle<VertexArrayTrait>;
+pub type VertexArrayContainer = GLHandleContainer<VertexArrayTrait>;
+pub type VertexArrayHandle = GLGfxHandle<VertexArrayTrait>;
 
 impl GLHandleTrait for VertexArrayTrait {
     fn create(_: ()) -> GLuint {
@@ -27,11 +27,13 @@ impl GLHandleTrait for VertexArrayTrait {
     fn delete_mul(handles: &[GLuint]) {
         unsafe { gl::DeleteVertexArrays(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
-}
 
-impl VertexArrayHandle {
-    pub fn get(&self, server: &draw::Server) -> Option<GLuint> {
-        server.handles.vertex_arrays.get(self.handle)
+    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
+        Some(&mut server.handles.vertex_arrays)
+    }
+
+    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>> {
+        Some(&server.handles.vertex_arrays)
     }
 }
 

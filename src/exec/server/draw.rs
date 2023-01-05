@@ -26,7 +26,7 @@ use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
 pub type ExecuteCallbackReturnType = anyhow::Result<Box<dyn Any + Send + Sync>>;
 pub type ExecuteCallback = dyn FnOnce(&mut Server) -> ExecuteCallbackReturnType + Send;
 
-pub type DrawCallback = dyn Fn(&Server) -> anyhow::Result<()>;
+pub type DrawCallback = dyn Fn(&Server) -> anyhow::Result<()> + Send;
 
 pub enum SendMsg {
     ExecuteReturn(ExecuteCallbackReturnType),
@@ -37,27 +37,28 @@ pub enum RecvMsg {
     Execute(Box<ExecuteCallback>, Option<ReturnMechanism>),
 }
 pub struct Server {
-    pub base: BaseGameServer<SendMsg, RecvMsg>,
-    pub display_handles: SendRawHandle,
-    pub display_size: PhysicalSize<NonZeroU32>,
-    pub gl_config: Config,
-    pub gl_display: Display,
+    pub draw_tree: DrawTree,
+    pub handles: HandleContainer,
+    pub swap_interval: SwapInterval,
     pub gl_surface: Surface<WindowSurface>,
     pub gl_context: PossiblyCurrentContext,
-    pub swap_interval: SwapInterval,
-    pub handles: HandleContainer,
-    pub draw_tree: DrawTree,
+    pub gl_display: Display,
+    pub gl_config: Config,
+    pub display_size: PhysicalSize<NonZeroU32>,
+    pub display_handles: SendRawHandle,
+    pub base: BaseGameServer<SendMsg, RecvMsg>,
 }
 
 pub struct SendServer {
-    pub base: BaseGameServer<SendMsg, RecvMsg>,
-    pub display_handles: SendRawHandle,
-    pub display_size: PhysicalSize<NonZeroU32>,
-    pub gl_config: Config,
-    pub gl_display: Display,
-    pub gl_context: NotCurrentContext,
-    pub swap_interval: SwapInterval,
+    pub draw_tree: DrawTree,
     pub handles: HandleContainer,
+    pub swap_interval: SwapInterval,
+    pub gl_context: NotCurrentContext,
+    pub gl_display: Display,
+    pub gl_config: Config,
+    pub display_size: PhysicalSize<NonZeroU32>,
+    pub display_handles: SendRawHandle,
+    pub base: BaseGameServer<SendMsg, RecvMsg>,
 }
 
 impl SendServer {
@@ -96,6 +97,7 @@ impl SendServer {
                 gl_config,
                 swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
                 handles: HandleContainer::new(),
+                draw_tree: DrawTree::new(),
             },
             ServerChannel {
                 sender,
@@ -172,6 +174,7 @@ impl GameServer for Server {
             display_size: self.display_size,
             swap_interval: self.swap_interval,
             handles: self.handles,
+            draw_tree: self.draw_tree,
         }))
     }
 
@@ -224,10 +227,11 @@ impl SendGameServer for SendServer {
             display_size: self.display_size,
             swap_interval: self.swap_interval,
             handles: self.handles,
-            draw_tree: DrawTree::new(),
+            draw_tree: self.draw_tree,
         })
     }
 }
+
 pub struct ServerChannel {
     sender: UnboundedSender<RecvMsg>,
     receiver: UnboundedReceiver<SendMsg>,
@@ -253,14 +257,10 @@ impl ServerChannel {
             .context("unable to send frequency profiling request")
     }
 
-    pub fn generate_multi_ids(&mut self, num_ids: usize) -> u64 {
-        let id = self.current_id;
-        self.current_id += num_ids as u64;
-        id
-    }
-
     pub fn generate_id(&mut self) -> u64 {
-        self.generate_multi_ids(1)
+        let id = self.current_id;
+        self.current_id += 1;
+        id
     }
 }
 

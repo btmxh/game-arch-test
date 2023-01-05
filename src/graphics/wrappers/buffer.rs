@@ -1,13 +1,13 @@
 use gl::types::{GLenum, GLuint};
 
-use crate::{graphics::GfxHandle, exec::server::draw};
+use crate::exec::server::draw;
 
-use super::{GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
 
 pub struct BufferTrait;
-pub type Buffer = GLHandle<BufferTrait, ()>;
-pub type BufferContainer = GLHandleContainer<BufferTrait, ()>;
-pub type BufferHandle = GfxHandle<Buffer>;
+pub type Buffer = GLHandle<BufferTrait>;
+pub type BufferContainer = GLHandleContainer<BufferTrait>;
+pub type BufferHandle = GLGfxHandle<BufferTrait>;
 
 impl GLHandleTrait for BufferTrait {
     fn create(_: ()) -> GLuint {
@@ -27,10 +27,12 @@ impl GLHandleTrait for BufferTrait {
     fn delete_mul(handles: &[GLuint]) {
         unsafe { gl::DeleteBuffers(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
-}
 
-impl BufferHandle {
-    pub fn get(&self, server: &draw::Server) -> Option<GLuint> {
-        server.handles.buffers.get(self.handle)
+    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
+        Some(&mut server.handles.buffers)
+    }
+
+    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>> {
+        Some(&server.handles.buffers)
     }
 }

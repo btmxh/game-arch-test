@@ -1,21 +1,24 @@
-use std::marker::PhantomData;
+use std::{borrow::Cow, hash::Hash, marker::PhantomData};
 
 use gl::types::GLuint;
 
+use crate::exec::server::draw;
+
 use self::wrappers::{
-    buffer::{Buffer, BufferContainer},
-    framebuffer::{Framebuffer, FramebufferContainer},
-    shader::{Program, ProgramContainer},
-    texture::{Texture, TextureContainer},
-    vertex_array::{VertexArray, VertexArrayContainer},
+    buffer::{Buffer, BufferContainer, BufferHandle},
+    framebuffer::{Framebuffer, FramebufferContainer, FramebufferHandle},
+    shader::{Program, ProgramContainer, ProgramHandle},
+    texture::{Texture, TextureContainer, TextureHandle},
+    vertex_array::{VertexArray, VertexArrayContainer, VertexArrayHandle},
 };
 
+pub mod blur;
+pub mod debug_callback;
 pub mod quad_renderer;
 pub mod tree;
 pub mod wrappers;
-pub mod debug_callback;
 
-#[derive(Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug)]
 pub struct GfxHandle<T> {
     pub handle: u64,
     data: PhantomData<fn() -> T>,
@@ -28,7 +31,25 @@ impl<T> GfxHandle<T> {
             data: PhantomData,
         }
     }
+
+    pub fn new(channel: &mut draw::ServerChannel) -> Self {
+        Self::from_handle(channel.generate_id())
+    }
 }
+
+impl<T> Hash for GfxHandle<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+    }
+}
+
+impl<T> PartialEq for GfxHandle<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle
+    }
+}
+
+impl<T> Eq for GfxHandle<T> {}
 
 impl<T> Clone for GfxHandle<T> {
     fn clone(&self) -> Self {
@@ -38,6 +59,8 @@ impl<T> Clone for GfxHandle<T> {
         }
     }
 }
+
+impl<T> Copy for GfxHandle<T> {}
 
 #[derive(Default)]
 pub struct HandleContainer {
@@ -53,29 +76,45 @@ impl HandleContainer {
         Self::default()
     }
 
-    pub fn create_vertex_array(&mut self, name: &str, handle: u64) -> anyhow::Result<GLuint> {
-        VertexArray::new_default(name).map(|v| self.vertex_arrays.insert(handle, v))
+    pub fn create_vertex_array(
+        &mut self,
+        name: impl Into<Cow<'static, str>>,
+        handle: VertexArrayHandle,
+    ) -> anyhow::Result<GLuint> {
+        VertexArray::new(name).map(|v| self.vertex_arrays.insert(handle, v))
     }
 
-    pub fn create_buffer(&mut self, name: &str, handle: u64) -> anyhow::Result<GLuint> {
-        Buffer::new_default(name).map(|b| self.buffers.insert(handle, b))
+    pub fn create_buffer(
+        &mut self,
+        name: impl Into<Cow<'static, str>>,
+        handle: BufferHandle,
+    ) -> anyhow::Result<GLuint> {
+        Buffer::new(name).map(|b| self.buffers.insert(handle, b))
     }
 
-    pub fn create_texture(&mut self, name: &str, handle: u64) -> anyhow::Result<GLuint> {
-        Texture::new_default(name).map(|t| self.textures.insert(handle, t))
+    pub fn create_texture(
+        &mut self,
+        name: impl Into<Cow<'static, str>>,
+        handle: TextureHandle,
+    ) -> anyhow::Result<GLuint> {
+        Texture::new(name).map(|t| self.textures.insert(handle, t))
     }
 
     pub fn create_vf_program(
         &mut self,
-        name: &str,
-        handle: u64,
+        name: impl Into<Cow<'static, str>>,
+        handle: ProgramHandle,
         vertex: &str,
         fragment: &str,
     ) -> anyhow::Result<GLuint> {
-        Program::new_vf(name, vertex, fragment).map(|p| self.programs.insert(handle, p))
+        Program::new_vf(name.into(), vertex, fragment).map(|p| self.programs.insert(handle, p))
     }
 
-    pub fn create_framebuffer(&mut self, name: &str, handle: u64) -> anyhow::Result<GLuint> {
-        Framebuffer::new_default(name).map(|f| self.framebuffers.insert(handle, f))
+    pub fn create_framebuffer(
+        &mut self,
+        name: impl Into<Cow<'static, str>>,
+        handle: FramebufferHandle,
+    ) -> anyhow::Result<GLuint> {
+        Framebuffer::new(name).map(|f| self.framebuffers.insert(handle, f))
     }
 }

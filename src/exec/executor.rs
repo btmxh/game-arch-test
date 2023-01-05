@@ -34,6 +34,12 @@ pub struct GameServerExecutor {
     proxy: EventLoopProxy<GameUserEvent>,
 }
 
+struct ExecutorAndHandler<F> {
+    // ensure drop order
+    handler: F,
+    executor: GameServerExecutor,
+}
+
 impl GameServerExecutor {
     fn move_server_from(
         &mut self,
@@ -127,28 +133,19 @@ impl GameServerExecutor {
             })
     }
 
-    pub fn run<F>(mut self, event_loop: EventLoop<GameUserEvent>, mut event_handler: F) -> !
+    pub fn run<F>(self, event_loop: EventLoop<GameUserEvent>, event_handler: F) -> !
     where
         F: FnMut(&mut Self, GameEvent) -> anyhow::Result<()> + 'static,
     {
+        let mut enh = ExecutorAndHandler {
+            executor: self,
+            handler: event_handler,
+        };
         event_loop.run(move |event, _target, control_flow| {
-            match *control_flow {
-                ControlFlow::ExitWithCode(_) => {
-                    self.stop();
-                }
-
-                _ => {
-                    *control_flow = if self.main_runner.base.container.is_empty() {
-                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
-                    } else {
-                        ControlFlow::Poll
-                    }
-                }
-            };
-
             match event {
                 Event::MainEventsCleared => {
-                    self.main_runner
+                    enh.executor
+                        .main_runner
                         .base
                         .run_single()
                         .expect("error running main runner");
@@ -156,8 +153,22 @@ impl GameServerExecutor {
 
                 Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
 
-                event => event_handler(&mut self, event).expect("error handling events"),
+                event => (enh.handler)(&mut enh.executor, event).expect("error handling events"),
             }
+
+            match *control_flow {
+                ControlFlow::ExitWithCode(_) => {
+                    enh.executor.stop();
+                }
+
+                _ => {
+                    *control_flow = if enh.executor.main_runner.base.container.is_empty() {
+                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
+                    } else {
+                        ControlFlow::Poll
+                    }
+                }
+            };
         })
     }
 

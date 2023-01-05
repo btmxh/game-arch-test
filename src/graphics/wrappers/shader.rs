@@ -9,7 +9,7 @@ use gl::types::{GLchar, GLenum, GLuint};
 
 use crate::{exec::server::draw, graphics::GfxHandle};
 
-use super::{GLHandle, GLHandleContainer, GLHandleTrait};
+use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait};
 
 pub struct ShaderTrait;
 pub enum ShaderType {
@@ -34,9 +34,9 @@ impl GLHandleTrait<ShaderType> for ShaderTrait {
     }
 }
 pub struct ProgramTrait;
-pub type Program = GLHandle<ProgramTrait, ()>;
-pub type ProgramContainer = GLHandleContainer<ProgramTrait, ()>;
-pub type ProgramHandle = GfxHandle<Program>;
+pub type Program = GLHandle<ProgramTrait>;
+pub type ProgramContainer = GLHandleContainer<ProgramTrait>;
+pub type ProgramHandle = GLGfxHandle<ProgramTrait>;
 
 impl GLHandleTrait for ProgramTrait {
     fn create(_: ()) -> GLuint {
@@ -50,11 +50,23 @@ impl GLHandleTrait for ProgramTrait {
     fn identifier() -> GLenum {
         gl::PROGRAM
     }
+
+    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
+        Some(&mut server.handles.programs)
+    }
+
+    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>> {
+        Some(&server.handles.programs)
+    }
 }
 
 impl Shader {
-    pub fn new_sourced(name: &str, typ: ShaderType, source: &str) -> anyhow::Result<Self> {
-        let shader = Self::new(name, typ)?;
+    pub fn new_sourced(
+        name: impl Into<Cow<'static, str>>,
+        typ: ShaderType,
+        source: &str,
+    ) -> anyhow::Result<Self> {
+        let shader = Self::new_args(name, typ)?;
         unsafe {
             let c_source = CString::new(source)?;
             let ptr = c_source.as_ptr();
@@ -76,7 +88,7 @@ impl Shader {
                 let log = CStr::from_bytes_with_nul(buffer.as_slice())
                     .map(|l| l.to_string_lossy())
                     .unwrap_or_else(|_| Cow::Borrowed("unknown error occurred"));
-                bail!("unable to compile {}, log: {}", name, log);
+                bail!("unable to compile {}, log: {}", shader.name, log);
             }
         }
         Ok(shader)
@@ -84,15 +96,19 @@ impl Shader {
 }
 
 impl Program {
-    pub fn new_vf(name: &str, vertex: &str, fragment: &str) -> anyhow::Result<Self> {
-        let program = Self::new_default(name)?;
+    pub fn new_vf(
+        name: impl Into<Cow<'static, str>>,
+        vertex: &str,
+        fragment: &str,
+    ) -> anyhow::Result<Self> {
+        let program = Self::new(name)?;
         let vertex = Shader::new_sourced(
-            format!("{name} vertex shader").as_str(),
+            format!("{} vertex shader", program.name),
             ShaderType::Vertex,
             vertex,
         )?;
         let fragment = Shader::new_sourced(
-            format!("{name} fragment shader").as_str(),
+            format!("{} fragment shader", program.name),
             ShaderType::Fragment,
             fragment,
         )?;
@@ -118,18 +134,12 @@ impl Program {
                 let log = CStr::from_bytes_with_nul(buffer.as_slice())
                     .map(|l| l.to_string_lossy())
                     .unwrap_or_else(|_| Cow::Borrowed("unknown error occurred"));
-                bail!("unable to link {}, log: {}", name, log);
+                bail!("unable to link {}, log: {}", program.name, log);
             }
             gl::DetachShader(*program, *vertex);
             gl::DetachShader(*program, *fragment);
         }
 
         Ok(program)
-    }
-}
-
-impl ProgramHandle {
-    pub fn get(&self, server: &draw::Server) -> Option<GLuint> {
-        server.handles.programs.get(self.handle)
     }
 }

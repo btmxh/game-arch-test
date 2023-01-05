@@ -53,7 +53,7 @@ impl DrawTree {
 
     pub fn create_root<F>(&mut self, handle: u64, callback: F)
     where
-        F: Fn(&draw::Server) -> anyhow::Result<()> + 'static,
+        F: Fn(&draw::Server) -> anyhow::Result<()> + Send + 'static,
     {
         self.root_node = Some(handle);
         self.nodes

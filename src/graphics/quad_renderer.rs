@@ -82,12 +82,12 @@ impl QuadRenderer {
             .expect("quad renderer shader program not found");
 
         unsafe {
-            gl::BindVertexArray(vao);
-            gl::UseProgram(program);
+            gl::BindVertexArray(*vao);
+            gl::UseProgram(*program);
 
             gl::Uniform2fv(
                 gl::GetUniformLocation(
-                    program,
+                    *program,
                     CStr::from_bytes_with_nul_unchecked("bounds\0".as_bytes()).as_ptr(),
                 ),
                 2,
@@ -95,7 +95,7 @@ impl QuadRenderer {
             );
             gl::Uniform1i(
                 gl::GetUniformLocation(
-                    program,
+                    *program,
                     CStr::from_bytes_with_nul_unchecked("tex\0".as_bytes()).as_ptr(),
                 ),
                 0,

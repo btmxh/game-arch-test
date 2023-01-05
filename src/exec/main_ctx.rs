@@ -126,7 +126,7 @@ impl MainContext {
                 blur.redraw(
                     server,
                     window_size,
-                    test_texture.get(server).unwrap(),
+                    *test_texture.get(server).unwrap(),
                     1.0,
                     3.0,
                 )?;
@@ -146,7 +146,7 @@ impl MainContext {
                     };
                     renderer.draw(
                         server,
-                        blur.output_texture_handle().get(server).unwrap(),
+                        *blur.output_texture_handle().get(server).unwrap(),
                         &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
                     );
 
@@ -188,7 +188,7 @@ impl MainContext {
                 blur.redraw(
                     server,
                     window_size,
-                    test_texture.get(server).unwrap(),
+                    *test_texture.get(server).unwrap(),
                     0.0,
                     blur_factor,
                 )?;

@@ -88,7 +88,7 @@ impl Shader {
                 let log = CStr::from_bytes_with_nul(buffer.as_slice())
                     .map(|l| l.to_string_lossy())
                     .unwrap_or_else(|_| Cow::Borrowed("unknown error occurred"));
-                bail!("unable to compile {}, log: {}", shader.name, log);
+                bail!("unable to compile {}, log: {}", shader.name(), log);
             }
         }
         Ok(shader)
@@ -103,12 +103,12 @@ impl Program {
     ) -> anyhow::Result<Self> {
         let program = Self::new(name)?;
         let vertex = Shader::new_sourced(
-            format!("{} vertex shader", program.name),
+            format!("{} vertex shader", program.name()),
             ShaderType::Vertex,
             vertex,
         )?;
         let fragment = Shader::new_sourced(
-            format!("{} fragment shader", program.name),
+            format!("{} fragment shader", program.name()),
             ShaderType::Fragment,
             fragment,
         )?;
@@ -134,7 +134,7 @@ impl Program {
                 let log = CStr::from_bytes_with_nul(buffer.as_slice())
                     .map(|l| l.to_string_lossy())
                     .unwrap_or_else(|_| Cow::Borrowed("unknown error occurred"));
-                bail!("unable to link {}, log: {}", program.name, log);
+                bail!("unable to link {}, log: {}", program.name(), log);
             }
             gl::DetachShader(*program, *vertex);
             gl::DetachShader(*program, *fragment);

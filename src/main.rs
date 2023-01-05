@@ -5,7 +5,8 @@ use exec::{
     dispatch::DispatchList,
     executor::GameServerExecutor,
     main_ctx::MainContext,
-    server::{audio, draw, update, ServerChannels},
+    runner::MAIN_RUNNER_ID,
+    server::{audio, draw, update, ServerChannels, ServerKind},
 };
 use futures::executor::block_on;
 use utils::{args::parse_args, log::init_log};

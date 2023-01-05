@@ -221,7 +221,7 @@ impl BlurRenderer {
                 .map(|f| server.handles.textures.remove(&f.texture.0.handle))
                 .collect::<Vec<_>>();
             for (i, f) in self.framebuffers.iter().enumerate() {
-                unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffers[i]) };
+                unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[i]) };
                 Self::create_texture_attachment(
                     server,
                     textures[i]
@@ -241,23 +241,23 @@ impl BlurRenderer {
             .collect::<Vec<_>>();
 
         unsafe {
-            gl::UseProgram(program);
-            gl::BindVertexArray(vertex_array);
+            gl::UseProgram(*program);
+            gl::BindVertexArray(*vertex_array);
             gl::Uniform1f(
-                gl::GetUniformLocation(program, "sigma\0".as_ptr() as *const _),
+                gl::GetUniformLocation(*program, "sigma\0".as_ptr() as *const _),
                 blur_sigma,
             );
             gl::Uniform1i(
-                gl::GetUniformLocation(program, "tex\0".as_ptr() as *const _),
+                gl::GetUniformLocation(*program, "tex\0".as_ptr() as *const _),
                 0,
             );
-            let loc_pixel = gl::GetUniformLocation(program, "pixel\0".as_ptr() as *const _);
-            let loc_lod = gl::GetUniformLocation(program, "lod\0".as_ptr() as *const _);
+            let loc_pixel = gl::GetUniformLocation(*program, "pixel\0".as_ptr() as *const _);
+            let loc_lod = gl::GetUniformLocation(*program, "lod\0".as_ptr() as *const _);
             gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width, 0.0);
             gl::Uniform1f(loc_lod, lod);
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffers[0]);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[0]);
             gl::Clear(gl::COLOR_BUFFER_BIT);
             gl::Viewport(
                 0,
@@ -269,8 +269,8 @@ impl BlurRenderer {
             gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height);
             gl::Uniform1f(loc_lod, 0.0);
             gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, textures[0]);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffers[1]);
+            gl::BindTexture(gl::TEXTURE_2D, *textures[0]);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[1]);
             gl::Clear(gl::COLOR_BUFFER_BIT);
             gl::Viewport(
                 0,

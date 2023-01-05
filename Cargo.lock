@@ -713,6 +713,7 @@ dependencies = [
  "image",
  "rand",
  "raw-window-handle 0.5.0",
+ "sendable",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -1601,6 +1602,12 @@ dependencies = [
  "smithay-client-toolkit",
  "tiny-skia",
 ]
+
+[[package]]
+name = "sendable"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b6ea834ed08bdc4514af90f53c0f6fb0c6cb6309b510624e11b9af04be8addb"
 
 [[package]]
 name = "serde"

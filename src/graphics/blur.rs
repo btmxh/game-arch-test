@@ -93,7 +93,7 @@ pub struct BlurRenderer {
 
 impl BlurRenderer {
     #[allow(unused_mut)]
-    pub fn new(
+    pub async fn new(
         executor: &mut GameServerExecutor,
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
@@ -105,9 +105,9 @@ impl BlurRenderer {
             Some(ReturnMechanism::Sync),
             shader::VERTEX,
             shader::FRAGMENT,
-        )?;
-        let framebuffer_0 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0")?;
-        let framebuffer_1 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0")?;
+        ).await?;
+        let framebuffer_0 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0").await?;
+        let framebuffer_1 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0").await?;
         let framebuffers = [framebuffer_0, framebuffer_1];
         // unstable lol
         // let framebuffers = Self::zero_range_two().try_map(|i| {
@@ -121,7 +121,7 @@ impl BlurRenderer {
         })
     }
 
-    pub fn redraw(
+    pub async fn redraw(
         &mut self,
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
@@ -137,7 +137,7 @@ impl BlurRenderer {
         };
         let blur_sigma = blur_sigma * downscale;
         for framebuffer in self.framebuffers.iter_mut() {
-            framebuffer.resize(executor, draw, framebuffer_size)?;
+            framebuffer.resize(executor, draw, framebuffer_size).await?;
         }
 
         let slf = self.clone();
@@ -198,7 +198,7 @@ impl BlurRenderer {
                 );
             };
             Ok(Box::new(()))
-        })?;
+        }).await?;
         Ok(())
     }
 

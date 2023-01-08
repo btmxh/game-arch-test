@@ -151,7 +151,7 @@ impl Program {
 
 impl ProgramHandle {
     #[allow(unused_mut)]
-    pub fn new_vf(
+    pub async fn new_vf(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
@@ -167,7 +167,7 @@ impl ProgramHandle {
                 server.handles.create_vf_program(name, &handle, vertex, fragment)?;
                 Ok(Box::new(()))
             }),
-        )?;
+        ).await?;
         Ok(handle)
     }
 }

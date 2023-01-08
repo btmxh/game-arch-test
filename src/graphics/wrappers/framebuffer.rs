@@ -53,7 +53,7 @@ pub struct DefaultTextureFramebuffer {
 }
 
 impl DefaultTextureFramebuffer {
-    pub fn new(
+    pub async fn new(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>>,
@@ -65,8 +65,8 @@ impl DefaultTextureFramebuffer {
                 draw,
                 Some(ReturnMechanism::Sync),
                 format!("{name} texture attachment"),
-            )?,
-            framebuffer: FramebufferHandle::new(executor, draw, Some(ReturnMechanism::Sync), name)?,
+            ).await?,
+            framebuffer: FramebufferHandle::new(executor, draw, Some(ReturnMechanism::Sync), name).await?,
             size: None,
         };
         Ok(slf)
@@ -132,7 +132,7 @@ impl DefaultTextureFramebuffer {
         Ok(())
     }
 
-    pub fn resize(
+    pub async fn resize(
         &mut self,
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
@@ -147,7 +147,7 @@ impl DefaultTextureFramebuffer {
         executor.execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
             slf.resize_in_server(server, new_size)?;
             Ok(Box::new(()))
-        })?;
+        }).await?;
         Ok(())
     }
 }

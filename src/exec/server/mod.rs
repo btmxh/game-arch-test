@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use anyhow::Context;
+use async_trait::async_trait;
 use rand::{thread_rng, Rng};
 use winit::event_loop::EventLoopProxy;
 
@@ -27,6 +28,7 @@ pub struct BaseGameServer<SendMsg, RecvMsg> {
     pub timer: f64,
 }
 
+#[async_trait(?Send)]
 pub trait GameServerChannel<SendMsg, RecvMsg> {
     fn sender(&self) -> &UnboundedSender<RecvMsg>;
     fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg>;
@@ -39,8 +41,8 @@ pub trait GameServerChannel<SendMsg, RecvMsg> {
             )
     }
 
-    fn recv(&mut self) -> anyhow::Result<SendMsg> {
-        self.receiver().blocking_recv().ok_or_else(|| {
+    async fn recv(&mut self) -> anyhow::Result<SendMsg> {
+        self.receiver().recv().await.ok_or_else(|| {
             anyhow::format_err!("unable to receive message from (local) game server (the server was probably closed)")
         })
     }

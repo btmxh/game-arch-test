@@ -1,8 +1,15 @@
+use std::{borrow::Cow, ptr::null};
+
 use gl::types::{GLenum, GLuint};
+use glutin::prelude::GlConfig;
+use winit::dpi::PhysicalSize;
 
-use crate::exec::server::draw;
+use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
 
-use super::{texture::TextureHandle, GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
+use super::{
+    texture::TextureHandle, GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait,
+    SendGLHandleContainer,
+};
 
 pub struct FramebufferTrait;
 pub type Framebuffer = GLHandle<FramebufferTrait>;
@@ -38,7 +45,111 @@ impl GLHandleTrait for FramebufferTrait {
     }
 }
 
+#[derive(Clone)]
 pub struct DefaultTextureFramebuffer {
     pub texture: TextureHandle,
     pub framebuffer: FramebufferHandle,
+    pub size: Option<PhysicalSize<u32>>,
+}
+
+impl DefaultTextureFramebuffer {
+    pub fn new(
+        executor: &mut GameServerExecutor,
+        draw: &mut draw::ServerChannel,
+        name: impl Into<Cow<'static, str>>,
+    ) -> anyhow::Result<Self> {
+        let name = name.into();
+        let slf = Self {
+            texture: TextureHandle::new(
+                executor,
+                draw,
+                Some(ReturnMechanism::Sync),
+                format!("{name} texture attachment"),
+            )?,
+            framebuffer: FramebufferHandle::new(executor, draw, Some(ReturnMechanism::Sync), name)?,
+            size: None,
+        };
+        Ok(slf)
+    }
+
+    fn resize_in_server(
+        &self,
+        server: &mut draw::Server,
+        size: PhysicalSize<u32>,
+    ) -> anyhow::Result<()> {
+        let (framebuffer, texture) = match self.size {
+            Some(sz) if size == sz => return Ok(()),
+            None => (self.framebuffer.get(server), self.texture.get(server)),
+            _ => {
+                let old_texture = server
+                    .handles
+                    .textures
+                    .remove(&self.texture.0.handle)
+                    .unwrap();
+                let new_texture = server
+                    .handles
+                    .create_texture(old_texture.name(), &self.texture)?;
+
+                (self.framebuffer.get(server), new_texture)
+            }
+        };
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffer);
+            gl::BindTexture(gl::TEXTURE_2D, *texture);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                if server.gl_config.srgb_capable() {
+                    gl::SRGB8_ALPHA8.try_into().unwrap()
+                } else {
+                    gl::RGBA8.try_into().unwrap()
+                },
+                size.width.try_into().unwrap(),
+                size.height.try_into().unwrap(),
+                0,
+                gl::RGBA,
+                gl::UNSIGNED_BYTE,
+                null(),
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_MIN_FILTER,
+                gl::LINEAR.try_into().unwrap(),
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_MAG_FILTER,
+                gl::LINEAR.try_into().unwrap(),
+            );
+            gl::FramebufferTexture2D(
+                gl::FRAMEBUFFER,
+                gl::COLOR_ATTACHMENT0,
+                gl::TEXTURE_2D,
+                *texture,
+                0,
+            );
+
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+        }
+        Ok(())
+    }
+
+    pub fn resize(
+        &mut self,
+        executor: &mut GameServerExecutor,
+        draw: &mut draw::ServerChannel,
+        new_size: PhysicalSize<u32>,
+    ) -> anyhow::Result<()> {
+        if self.size.map(|s| s == new_size).unwrap_or(false) {
+            return Ok(());
+        }
+
+        let slf = self.clone();
+        self.size = Some(new_size);
+        executor.execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
+            slf.resize_in_server(server, new_size)?;
+            Ok(Box::new(()))
+        })?;
+        Ok(())
+    }
 }

@@ -12,7 +12,12 @@ use gl::types::{GLenum, GLuint};
 use sendable::{send_rc::PostSend, SendRc};
 
 use crate::{
-    exec::server::{draw, GameServerChannel},
+    enclose,
+    exec::{
+        dispatch::ReturnMechanism,
+        executor::GameServerExecutor,
+        server::{draw, GameServerChannel},
+    },
     utils::{error::ResultExt, mpsc},
 };
 
@@ -98,7 +103,8 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
 }
 
 impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
-    pub fn new(draw: &mut draw::ServerChannel) -> Self {
+    #[allow(clippy::missing_safety_doc)]
+    pub unsafe fn new_uninit(draw: &mut draw::ServerChannel) -> Self {
         Self(Arc::new(GLGfxHandleInner {
             handle: GfxHandle::new(draw),
             sender: draw.sender().clone(),
@@ -106,8 +112,50 @@ impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
         }))
     }
 
-    pub fn get(&self, server: &draw::Server) -> Option<GLHandle<T, A>> {
+    #[allow(unused_mut)]
+    pub fn new_args(
+        executor: &mut GameServerExecutor,
+        draw: &mut draw::ServerChannel,
+        return_mechanism: Option<ReturnMechanism>,
+        name: impl Into<Cow<'static, str>> + Send + 'static,
+        args: A,
+    ) -> anyhow::Result<Self>
+    where
+        A: Send,
+    {
+        let slf = unsafe { Self::new_uninit(draw) };
+        executor.execute_draw(
+            draw,
+            return_mechanism,
+            enclose!((slf) move |server| {
+                if let Some(container) = T::get_container_mut(server) {
+                    let handle = GLHandle::<T, A>::new_args(name, args)?;
+                    container.insert(&slf, handle);
+                }
+                Ok(Box::new(()))
+            }),
+        )?;
+        Ok(slf)
+    }
+
+    pub fn try_get(&self, server: &draw::Server) -> Option<GLHandle<T, A>> {
         T::get_container(server).unwrap().get(self)
+    }
+
+    pub fn get(&self, server: &draw::Server) -> GLHandle<T, A> {
+        self.try_get(server)
+            .expect("get() called on a null GLHandle")
+    }
+}
+
+impl<T: GLHandleTrait<()>> GLGfxHandle<T> {
+    pub fn new(
+        executor: &mut GameServerExecutor,
+        draw: &mut draw::ServerChannel,
+        return_mechanism: Option<ReturnMechanism>,
+        name: impl Into<Cow<'static, str>> + Send + 'static,
+    ) -> anyhow::Result<Self> {
+        Self::new_args(executor, draw, return_mechanism, name, ())
     }
 }
 
@@ -213,11 +261,16 @@ impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
         handle.0.handle.handle
     }
 
-    pub fn insert(&mut self, gfx_handle: GLGfxHandle<T, A>, handle: GLHandle<T, A>) -> GLuint {
-        let gl_handle = *handle;
-        let old_value = self.0.insert(Self::handle_to_key(&gfx_handle), handle);
+    pub fn insert(
+        &mut self,
+        gfx_handle: &GLGfxHandle<T, A>,
+        handle: GLHandle<T, A>,
+    ) -> GLHandle<T, A> {
+        let old_value = self
+            .0
+            .insert(Self::handle_to_key(gfx_handle), handle.clone());
         debug_assert!(old_value.is_none());
-        gl_handle
+        handle
     }
 
     pub fn remove(&mut self, gfx_handle: &GfxHandle<GLHandle<T, A>>) -> Option<GLHandle<T, A>> {

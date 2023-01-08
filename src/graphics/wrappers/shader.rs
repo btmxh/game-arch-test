@@ -7,7 +7,11 @@ use std::{
 use anyhow::bail;
 use gl::types::{GLchar, GLenum, GLuint};
 
-use crate::{exec::server::draw, graphics::GfxHandle};
+use crate::{
+    enclose,
+    exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw},
+    graphics::GfxHandle,
+};
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
@@ -142,5 +146,28 @@ impl Program {
         }
 
         Ok(program)
+    }
+}
+
+impl ProgramHandle {
+    #[allow(unused_mut)]
+    pub fn new_vf(
+        executor: &mut GameServerExecutor,
+        draw: &mut draw::ServerChannel,
+        name: impl Into<Cow<'static, str>> + Send + 'static,
+        ret: Option<ReturnMechanism>,
+        vertex: &'static str,
+        fragment: &'static str,
+    ) -> anyhow::Result<Self> {
+        let handle = unsafe { Self::new_uninit(draw) };
+        executor.execute_draw(
+            draw,
+            ret,
+            enclose!((handle) move |server| {
+                server.handles.create_vf_program(name, &handle, vertex, fragment)?;
+                Ok(Box::new(()))
+            }),
+        )?;
+        Ok(handle)
     }
 }

@@ -1,16 +1,11 @@
-use std::{borrow::Cow, ptr::null};
-
-use gl::types::GLuint;
-use glutin::prelude::GlConfig;
 use winit::dpi::PhysicalSize;
 
-use crate::{
-    exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw},
-    utils::enclose::enclose,
-};
+use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
 
 use super::wrappers::{
-    framebuffer::FramebufferHandle, shader::ProgramHandle, texture::TextureHandle,
+    framebuffer::{DefaultTextureFramebuffer, FramebufferHandle},
+    shader::ProgramHandle,
+    texture::TextureHandle,
     vertex_array::VertexArrayHandle,
 };
 
@@ -93,194 +88,117 @@ pub struct TexturedFramebuffer {
 pub struct BlurRenderer {
     vertex_array: VertexArrayHandle,
     program: ProgramHandle,
-    pub framebuffers: [TexturedFramebuffer; 2],
-    framebuffer_size: Option<PhysicalSize<f32>>,
+    pub framebuffers: [DefaultTextureFramebuffer; 2],
 }
 
 impl BlurRenderer {
-    fn zero_range_two() -> [usize; 2] {
-        [0, 1]
-    }
-
     #[allow(unused_mut)]
     pub fn new(
         executor: &mut GameServerExecutor,
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
     ) -> anyhow::Result<Self> {
-        let program = ProgramHandle::new(draw);
-        let framebuffers = Self::zero_range_two().map(|_| FramebufferHandle::new(draw));
-        let textures = Self::zero_range_two().map(|_| TextureHandle::new(draw));
-
-        executor.execute_draw(
+        let program = ProgramHandle::new_vf(
+            executor,
             draw,
+            "blur shader program",
             Some(ReturnMechanism::Sync),
-            enclose!((framebuffers, program) move |s| {
-                s.handles.create_vf_program(
-                    "blur shader program",
-                    program,
-                    shader::VERTEX,
-                    shader::FRAGMENT,
-                )?;
-                for (i, framebuffer) in framebuffers.iter().enumerate() {
-                    s.handles.create_framebuffer(
-                        format!("blur framebuffer {}", i),
-                        framebuffer.clone(),
-                    )?;
-                }
-                Ok(Box::new(()))
-            }),
+            shader::VERTEX,
+            shader::FRAGMENT,
         )?;
+        let framebuffer_0 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0")?;
+        let framebuffer_1 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0")?;
+        let framebuffers = [framebuffer_0, framebuffer_1];
+        // unstable lol
+        // let framebuffers = Self::zero_range_two().try_map(|i| {
+        //     DefaultTextureFramebuffer::new(executor, draw, format!("blur framebuffer {i}"))
+        // })?;
 
         Ok(Self {
             vertex_array: dummy_vao,
             program,
-            framebuffers: Self::zero_range_two().map(|i| TexturedFramebuffer {
-                framebuffer: framebuffers[i].clone(),
-                texture: textures[i].clone(),
-            }),
-            framebuffer_size: None,
+            framebuffers,
         })
-    }
-
-    fn create_texture_attachment(
-        server: &mut draw::Server,
-        name: impl Into<Cow<'static, str>>,
-        framebuffer_size: PhysicalSize<u32>,
-        handle: TextureHandle,
-    ) -> anyhow::Result<()> {
-        let texture = server.handles.create_texture(name, handle)?;
-        unsafe {
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                if server.gl_config.srgb_capable() {
-                    gl::SRGB8_ALPHA8.try_into().unwrap()
-                } else {
-                    gl::RGBA8.try_into().unwrap()
-                },
-                framebuffer_size.width.try_into().unwrap(),
-                framebuffer_size.height.try_into().unwrap(),
-                0,
-                gl::RGBA,
-                gl::UNSIGNED_BYTE,
-                null(),
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_MIN_FILTER,
-                gl::LINEAR.try_into().unwrap(),
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_MAG_FILTER,
-                gl::LINEAR.try_into().unwrap(),
-            );
-            gl::FramebufferTexture2D(
-                gl::FRAMEBUFFER,
-                gl::COLOR_ATTACHMENT0,
-                gl::TEXTURE_2D,
-                texture,
-                0,
-            );
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-        }
-        Ok(())
     }
 
     pub fn redraw(
         &mut self,
-        server: &mut draw::Server,
+        executor: &mut GameServerExecutor,
+        draw: &mut draw::ServerChannel,
         window_size: PhysicalSize<u32>,
-        texture: GLuint,
+        texture: TextureHandle,
         lod: f32,
         blur_sigma: f32,
     ) -> anyhow::Result<()> {
-        let framebuffers = self
-            .framebuffers
-            .iter()
-            .map(|f| f.framebuffer.get(server).unwrap())
-            .collect::<Vec<_>>();
         let downscale = calc_blur_framebuffer_scale(blur_sigma);
         let framebuffer_size = PhysicalSize {
-            width: window_size.width as f32 * downscale,
-            height: window_size.height as f32 * downscale,
+            width: (window_size.width as f32 * downscale) as u32,
+            height: (window_size.height as f32 * downscale) as u32,
         };
         let blur_sigma = blur_sigma * downscale;
-        let program = self.program.get(server).unwrap();
-        let vertex_array = self.vertex_array.get(server).unwrap();
-        if self.framebuffer_size.is_none()
-            || ((self.framebuffer_size.unwrap().width - framebuffer_size.width).abs() < 1e-3
-                && (self.framebuffer_size.unwrap().height - framebuffer_size.height).abs() < 1e-3)
-        {
-            self.framebuffer_size = Some(framebuffer_size);
-            let textures = self
+        for framebuffer in self.framebuffers.iter_mut() {
+            framebuffer.resize(executor, draw, framebuffer_size)?;
+        }
+
+        let slf = self.clone();
+        executor.execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
+            let program = slf.program.get(server);
+            let vertex_array = slf.vertex_array.get(server);
+            let framebuffers = slf
                 .framebuffers
                 .iter()
-                .map(|f| server.handles.textures.remove(&f.texture.0.handle))
+                .map(|f| f.framebuffer.get(server))
                 .collect::<Vec<_>>();
-            for (i, f) in self.framebuffers.iter().enumerate() {
-                unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[i]) };
-                Self::create_texture_attachment(
-                    server,
-                    textures[i]
-                        .as_ref()
-                        .map(|t| t.name())
-                        .unwrap_or_else(|| format!("blur framebuffer {} texture", i).into()),
-                    framebuffer_size.cast::<u32>(),
-                    f.texture.clone(),
-                )?;
-                unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0) };
-            }
-        }
-        let textures = self
-            .framebuffers
-            .iter()
-            .map(|f| f.texture.get(server).unwrap())
-            .collect::<Vec<_>>();
 
-        unsafe {
-            gl::UseProgram(*program);
-            gl::BindVertexArray(*vertex_array);
-            gl::Uniform1f(
-                gl::GetUniformLocation(*program, "sigma\0".as_ptr() as *const _),
-                blur_sigma,
-            );
-            gl::Uniform1i(
-                gl::GetUniformLocation(*program, "tex\0".as_ptr() as *const _),
-                0,
-            );
-            let loc_pixel = gl::GetUniformLocation(*program, "pixel\0".as_ptr() as *const _);
-            let loc_lod = gl::GetUniformLocation(*program, "lod\0".as_ptr() as *const _);
-            gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width, 0.0);
-            gl::Uniform1f(loc_lod, lod);
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[0]);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-            gl::Viewport(
-                0,
-                0,
-                framebuffer_size.width as _,
-                framebuffer_size.height as _,
-            );
-            gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
-            gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height);
-            gl::Uniform1f(loc_lod, 0.0);
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, *textures[0]);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[1]);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-            gl::Viewport(
-                0,
-                0,
-                framebuffer_size.width as _,
-                framebuffer_size.height as _,
-            );
-            gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-        };
+            unsafe {
+                gl::UseProgram(*program);
+                gl::BindVertexArray(*vertex_array);
+                gl::Uniform1f(
+                    gl::GetUniformLocation(*program, "sigma\0".as_ptr() as *const _),
+                    blur_sigma,
+                );
+                gl::Uniform1i(
+                    gl::GetUniformLocation(*program, "tex\0".as_ptr() as *const _),
+                    0,
+                );
+                let loc_pixel = gl::GetUniformLocation(*program, "pixel\0".as_ptr() as *const _);
+                let loc_lod = gl::GetUniformLocation(*program, "lod\0".as_ptr() as *const _);
+                gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width as f32, 0.0);
+                gl::Uniform1f(loc_lod, lod);
+                gl::ActiveTexture(gl::TEXTURE0);
+                gl::BindTexture(gl::TEXTURE_2D, *texture.get(server));
+                gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[0]);
+                gl::Clear(gl::COLOR_BUFFER_BIT);
+                gl::Viewport(
+                    0,
+                    0,
+                    framebuffer_size.width as _,
+                    framebuffer_size.height as _,
+                );
+                gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+                gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height as f32);
+                gl::Uniform1f(loc_lod, 0.0);
+                gl::ActiveTexture(gl::TEXTURE0);
+                gl::BindTexture(gl::TEXTURE_2D, *slf.framebuffers[0].texture.get(server));
+                gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[1]);
+                gl::Clear(gl::COLOR_BUFFER_BIT);
+                gl::Viewport(
+                    0,
+                    0,
+                    framebuffer_size.width as _,
+                    framebuffer_size.height as _,
+                );
+                gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                gl::Viewport(
+                    0,
+                    0,
+                    window_size.width.try_into().unwrap(),
+                    window_size.height.try_into().unwrap(),
+                );
+            };
+            Ok(Box::new(()))
+        })?;
         Ok(())
     }
 

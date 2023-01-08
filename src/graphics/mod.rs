@@ -1,7 +1,5 @@
 use std::{borrow::Cow, hash::Hash, marker::PhantomData};
 
-use gl::types::GLuint;
-
 use crate::exec::server::draw;
 
 use self::wrappers::{
@@ -90,42 +88,42 @@ impl HandleContainer {
     pub fn create_vertex_array(
         &mut self,
         name: impl Into<Cow<'static, str>>,
-        handle: VertexArrayHandle,
-    ) -> anyhow::Result<GLuint> {
+        handle: &VertexArrayHandle,
+    ) -> anyhow::Result<VertexArray> {
         VertexArray::new(name).map(|v| self.vertex_arrays.insert(handle, v))
     }
 
     pub fn create_buffer(
         &mut self,
         name: impl Into<Cow<'static, str>>,
-        handle: BufferHandle,
-    ) -> anyhow::Result<GLuint> {
+        handle: &BufferHandle,
+    ) -> anyhow::Result<Buffer> {
         Buffer::new(name).map(|b| self.buffers.insert(handle, b))
     }
 
     pub fn create_texture(
         &mut self,
         name: impl Into<Cow<'static, str>>,
-        handle: TextureHandle,
-    ) -> anyhow::Result<GLuint> {
+        handle: &TextureHandle,
+    ) -> anyhow::Result<Texture> {
         Texture::new(name).map(|t| self.textures.insert(handle, t))
     }
 
     pub fn create_vf_program(
         &mut self,
         name: impl Into<Cow<'static, str>>,
-        handle: ProgramHandle,
+        handle: &ProgramHandle,
         vertex: &str,
         fragment: &str,
-    ) -> anyhow::Result<GLuint> {
+    ) -> anyhow::Result<Program> {
         Program::new_vf(name.into(), vertex, fragment).map(|p| self.programs.insert(handle, p))
     }
 
     pub fn create_framebuffer(
         &mut self,
         name: impl Into<Cow<'static, str>>,
-        handle: FramebufferHandle,
-    ) -> anyhow::Result<GLuint> {
+        handle: &FramebufferHandle,
+    ) -> anyhow::Result<Framebuffer> {
         Framebuffer::new(name).map(|f| self.framebuffers.insert(handle, f))
     }
 

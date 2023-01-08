@@ -43,43 +43,31 @@ pub struct QuadRenderer {
 }
 
 impl QuadRenderer {
+    #[allow(unused_mut)]
     pub fn new(
         executor: &mut GameServerExecutor,
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
     ) -> anyhow::Result<Self> {
-        let program = ProgramHandle::new(draw);
-        let program_clone = program.clone();
-        let slf = Self {
+        let program = ProgramHandle::new_vf(
+            executor,
+            draw,
+            "quad renderer shader program",
+            Some(ReturnMechanism::Sync),
+            shader::VERTEX,
+            shader::FRAGMENT,
+        )
+        .context("quad renderer initialization (in draw server) failed")?;
+
+        Ok(Self {
             vertex_array: dummy_vao,
             program,
-        };
-
-        executor
-            .execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
-                server.handles.create_vf_program(
-                    "quad renderer shader program",
-                    program_clone,
-                    shader::VERTEX,
-                    shader::FRAGMENT,
-                )?;
-
-                Ok(Box::new(()))
-            })
-            .context("quad renderer initialization (in draw server) failed")?;
-
-        Ok(slf)
+        })
     }
 
     pub fn draw(&self, server: &draw::Server, texture: GLuint, bounds: &[vec2; 2]) {
-        let vao = self
-            .vertex_array
-            .get(server)
-            .expect("quad renderer vertex array not found");
-        let program = self
-            .program
-            .get(server)
-            .expect("quad renderer shader program not found");
+        let vao = self.vertex_array.get(server);
+        let program = self.program.get(server);
 
         unsafe {
             gl::BindVertexArray(*vao);

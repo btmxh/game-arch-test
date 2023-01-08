@@ -15,7 +15,10 @@ use crate::{
     graphics::{
         blur::BlurRenderer,
         quad_renderer::QuadRenderer,
-        wrappers::{texture::TextureHandle, vertex_array::VertexArrayHandle},
+        wrappers::{
+            framebuffer::DefaultTextureFramebuffer, texture::TextureHandle,
+            vertex_array::VertexArrayHandle,
+        },
     },
     utils::{clock::debug_get_time, enclose::enclose, error::ResultExt},
 };
@@ -30,6 +33,7 @@ pub struct MainContext {
     pub test_texture: (TextureHandle, PhysicalSize<u32>),
     pub blur: BlurRenderer,
     pub renderer: QuadRenderer,
+    pub screen_framebuffer: DefaultTextureFramebuffer,
     pub dummy_vao: VertexArrayHandle,
     pub frequency_profiling: bool,
     pub vsync: bool,
@@ -48,26 +52,23 @@ impl MainContext {
         dispatch_list: DispatchList,
         mut channels: ServerChannels,
     ) -> anyhow::Result<Self> {
-        let dummy_vao = {
-            let vertex_array = VertexArrayHandle::new(&mut channels.draw);
-            executor.execute_draw(
-                &mut channels.draw,
-                Some(ReturnMechanism::Sync),
-                enclose!((vertex_array) move |s| {
-                    s.handles
-                        .create_vertex_array("dummy vertex array", vertex_array)?;
-                    Ok(Box::new(()))
-                }),
-            )?;
-            vertex_array
-        };
+        let dummy_vao = VertexArrayHandle::new(
+            executor,
+            &mut channels.draw,
+            Some(ReturnMechanism::Sync),
+            "dummy vertex array",
+        )?;
         let renderer = QuadRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
             .context("quad renderer initialization failed")?;
-        let blur = BlurRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
+        let mut blur = BlurRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
             .context("blur renderer initialization failed")?;
-        let window_size = display.get_size();
 
-        let test_texture = TextureHandle::new(&mut channels.draw);
+        let test_texture = TextureHandle::new(
+            executor,
+            &mut channels.draw,
+            Some(ReturnMechanism::Sync),
+            "test texture",
+        )?;
         let img = image::io::Reader::open("BG.jpg")
             .context("unable to load test texture")?
             .decode()
@@ -75,17 +76,18 @@ impl MainContext {
             .into_rgba8();
         let width = img.width();
         let height = img.height();
+        let mut screen_framebuffer =
+            DefaultTextureFramebuffer::new(executor, &mut channels.draw, "screen framebuffer")?;
+        screen_framebuffer.resize(executor, &mut channels.draw, display.get_size())?;
 
         executor
             .execute_draw(
                 &mut channels.draw,
                 Some(ReturnMechanism::Sync),
                 enclose!((test_texture) move |server| {
-                    let tex_handle = server
-                        .handles
-                        .create_texture("test texture", test_texture)?;
+                    let tex_handle = test_texture.get(server);
                     unsafe {
-                        gl::BindTexture(gl::TEXTURE_2D, tex_handle);
+                        gl::BindTexture(gl::TEXTURE_2D, *tex_handle);
                         gl::TexImage2D(
                             gl::TEXTURE_2D,
                             0,
@@ -122,42 +124,36 @@ impl MainContext {
         executor.execute_draw(
             &mut channels.draw,
             Some(ReturnMechanism::Sync),
-            enclose!((test_texture, blur, renderer) move |server| {
-                blur.redraw(
-                    server,
-                    window_size,
-                    *test_texture.get(server).unwrap(),
-                    1.0,
-                    3.0,
-                )?;
-
-                server.draw_tree.create_root(node_handle, enclose!((blur, renderer) move |server| {
-                    let viewport_size = server.display_size;
-                    let vw = viewport_size.width.get() as f32;
-                    let vh = viewport_size.height.get() as f32;
-                    let tw = width as f32;
-                    let th = height as f32;
-                    let var = vw / vh;
-                    let tar = tw / th;
-                    let (hw, hh) = if var < tar {
-                        (0.5 * var / tar, 0.5)
-                    } else {
-                        (0.5, 0.5 * tar / var)
-                    };
-                    renderer.draw(
-                        server,
-                        *blur.output_texture_handle().get(server).unwrap(),
-                        &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                    );
+            enclose!((blur, renderer) move |server| {
+                server.draw_tree.create_root(node_handle, move |server| {
+                    if let Some(texture) = blur.output_texture_handle().try_get(server) {
+                        let viewport_size = server.display_size;
+                        let vw = viewport_size.width.get() as f32;
+                        let vh = viewport_size.height.get() as f32;
+                        let tw = width as f32;
+                        let th = height as f32;
+                        let var = vw / vh;
+                        let tar = tw / th;
+                        let (hw, hh) = if var < tar {
+                            (0.5 * var / tar, 0.5)
+                        } else {
+                            (0.5, 0.5 * tar / var)
+                        };
+                        renderer.draw(
+                            server,
+                            *texture,
+                            &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
+                        );
+                    }
 
                     Ok(())
-                }));
+                });
 
                 Ok(Box::new(()))
             }),
         )?;
 
-        let slf = Self {
+        let mut slf = Self {
             renderer,
             blur,
             dummy_vao,
@@ -168,7 +164,9 @@ impl MainContext {
             channels,
             vsync: true,
             frequency_profiling: false,
+            screen_framebuffer,
         };
+        slf.update_blur_texture(executor, slf.display.get_size(), 32.0)?;
         Ok(slf)
     }
 
@@ -178,33 +176,14 @@ impl MainContext {
         window_size: PhysicalSize<u32>,
         blur_factor: f32,
     ) -> anyhow::Result<()> {
-        let test_texture = self.test_texture.0.clone();
         let mut blur = self.blur.clone();
-        // let renderer = self.renderer.clone();
-        executor.execute_draw(
+        blur.redraw(
+            executor,
             &mut self.channels.draw,
-            Some(ReturnMechanism::Sync),
-            move |server| {
-                blur.redraw(
-                    server,
-                    window_size,
-                    *test_texture.get(server).unwrap(),
-                    0.0,
-                    blur_factor,
-                )?;
-
-                unsafe {
-                    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-                    gl::Viewport(
-                        0,
-                        0,
-                        window_size.width.try_into().unwrap(),
-                        window_size.height.try_into().unwrap(),
-                    );
-                };
-
-                Ok(Box::new(()))
-            },
+            window_size,
+            self.test_texture.0.clone(),
+            0.0,
+            blur_factor,
         )?;
         Ok(())
     }

@@ -1,4 +1,4 @@
-use std::thread::JoinHandle;
+use async_thread::JoinHandle;
 
 use anyhow::{bail, Context};
 
@@ -95,7 +95,7 @@ impl ThreadRunnerHandle {
         let (to_send, to_recv) = mpsc::unbounded_channel();
         let (from_send, from_recv) = mpsc::unbounded_channel();
         Self {
-            join_handle: std::thread::spawn(move || {
+            join_handle: async_thread::spawn(move || {
                 ThreadRunner {
                     base: Runner::default(),
                     sender: from_send,
@@ -125,8 +125,8 @@ impl ThreadRunnerHandle {
         self.send(ToRunnerMsg::Stop)
     }
 
-    pub fn join(self) -> bool {
-        self.join_handle.join().is_err()
+    pub async fn join(self) -> bool {
+        self.join_handle.join().await.is_err()
     }
 
     pub fn set_frequency(&self, frequency: f64) -> anyhow::Result<()> {

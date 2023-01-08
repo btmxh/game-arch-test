@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
     executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
     executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
     executor.set_frequency(0, 1000.0)?;
-    let mut main_ctx = block_on(async {
+    let main_ctx = block_on(async {
         MainContext::new(
             &mut executor,
             display,
@@ -52,9 +52,5 @@ fn main() -> anyhow::Result<()> {
         )
         .await
     })?;
-    executor.run(event_loop, move |executor, e| {
-        fn unused<T>(_: &T) {}
-        unused(&guard);
-        block_on(async { main_ctx.handle_event(executor, e).await })
-    });
+    executor.run(event_loop, main_ctx, guard);
 }

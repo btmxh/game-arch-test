@@ -36,6 +36,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
+name = "async-thread"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f8127d0634ad2b788f12e8c8623f91c584c2eb7496157b2e0cada5b01e0fbfd"
+dependencies = [
+ "futures-channel",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -702,6 +711,7 @@ name = "game-arch-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-thread",
  "async-trait",
  "clap",
  "fern",

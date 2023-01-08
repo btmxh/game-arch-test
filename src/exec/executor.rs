@@ -4,18 +4,18 @@ use std::{
 };
 
 use anyhow::{bail, Context};
+use futures::executor::block_on;
+use tracing_appender::non_blocking::WorkerGuard;
 use winit::{
     event::Event,
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
 };
 
-use crate::{
-    events::{GameEvent, GameUserEvent},
-    utils::error::ResultExt,
-};
+use crate::{events::GameUserEvent, utils::error::ResultExt};
 
 use super::{
     dispatch::ReturnMechanism,
+    main_ctx::MainContext,
     runner::{
         container::ServerContainer, MainRunner, Runner, RunnerId, ServerMover, ThreadRunnerHandle,
         MAIN_RUNNER_ID,
@@ -32,12 +32,6 @@ pub struct GameServerExecutor {
     main_runner: MainRunner,
     thread_runners: [Option<ThreadRunnerHandle>; NUM_GAME_LOOPS],
     proxy: EventLoopProxy<GameUserEvent>,
-}
-
-struct ExecutorAndHandler<F> {
-    // ensure drop order
-    handler: F,
-    executor: GameServerExecutor,
 }
 
 impl GameServerExecutor {
@@ -116,59 +110,63 @@ impl GameServerExecutor {
         })
     }
 
-    pub fn stop(&mut self) {
-        self.thread_runners
-            .iter_mut()
-            .filter_map(|r| r.as_mut())
-            .for_each(|r| {
-                r.stop().context("error stopping runner thread").log_error();
-            });
-        self.thread_runners
-            .iter_mut()
-            .filter_map(|r| r.take())
-            .for_each(|r| {
-                if r.join() {
+    pub async fn stop(&mut self) {
+        for runner in self.thread_runners.iter_mut() {
+            if let Some(runner) = runner.take() {
+                runner
+                    .stop()
+                    .context("error stopping runner thread")
+                    .log_error();
+                if runner.join().await {
                     tracing::error!("runner thread panicked");
                 }
-            })
+            }
+        }
     }
 
-    pub fn run<F>(self, event_loop: EventLoop<GameUserEvent>, event_handler: F) -> !
-    where
-        F: FnMut(&mut Self, GameEvent) -> anyhow::Result<()> + 'static,
-    {
-        let mut enh = ExecutorAndHandler {
-            executor: self,
-            handler: event_handler,
-        };
+    pub fn run(
+        mut self,
+        event_loop: EventLoop<GameUserEvent>,
+        mut main_ctx: MainContext,
+        guard: Option<WorkerGuard>,
+    ) -> ! {
         event_loop.run(move |event, _target, control_flow| {
-            match event {
-                Event::MainEventsCleared => {
-                    enh.executor
-                        .main_runner
-                        .base
-                        .run_single()
-                        .expect("error running main runner");
-                }
-
-                Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
-
-                event => (enh.handler)(&mut enh.executor, event).expect("error handling events"),
-            }
-
-            match *control_flow {
-                ControlFlow::ExitWithCode(_) => {
-                    enh.executor.stop();
-                }
-
-                _ => {
-                    *control_flow = if enh.executor.main_runner.base.container.is_empty() {
-                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
-                    } else {
-                        ControlFlow::Poll
+            // guarantee drop order
+            fn unused<T>(_: &T) {}
+            unused(&guard);
+            unused(&main_ctx);
+            unused(&self);
+            block_on(async {
+                match event {
+                    Event::MainEventsCleared => {
+                        self.main_runner
+                            .base
+                            .run_single()
+                            .expect("error running main runner");
                     }
+
+                    Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
+
+                    event => main_ctx
+                        .handle_event(&mut self, event)
+                        .await
+                        .expect("error handling events"),
                 }
-            };
+
+                match *control_flow {
+                    ControlFlow::ExitWithCode(_) => {
+                        self.stop().await;
+                    }
+
+                    _ => {
+                        *control_flow = if self.main_runner.base.container.is_empty() {
+                            ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
+                        } else {
+                            ControlFlow::Poll
+                        }
+                    }
+                };
+            })
         })
     }
 

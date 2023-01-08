@@ -45,7 +45,7 @@ pub struct MainContext {
 
 impl MainContext {
     #[allow(unused_mut)]
-    pub fn new(
+    pub async fn new(
         executor: &mut GameServerExecutor,
         display: Display,
         event_loop_proxy: EventLoopProxy<GameUserEvent>,
@@ -57,10 +57,13 @@ impl MainContext {
             &mut channels.draw,
             Some(ReturnMechanism::Sync),
             "dummy vertex array",
-        )?;
+        )
+        .await?;
         let renderer = QuadRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
+            .await
             .context("quad renderer initialization failed")?;
         let mut blur = BlurRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
+            .await
             .context("blur renderer initialization failed")?;
 
         let test_texture = TextureHandle::new(
@@ -68,7 +71,8 @@ impl MainContext {
             &mut channels.draw,
             Some(ReturnMechanism::Sync),
             "test texture",
-        )?;
+        )
+        .await?;
         let img = image::io::Reader::open("BG.jpg")
             .context("unable to load test texture")?
             .decode()
@@ -77,8 +81,11 @@ impl MainContext {
         let width = img.width();
         let height = img.height();
         let mut screen_framebuffer =
-            DefaultTextureFramebuffer::new(executor, &mut channels.draw, "screen framebuffer")?;
-        screen_framebuffer.resize(executor, &mut channels.draw, display.get_size())?;
+            DefaultTextureFramebuffer::new(executor, &mut channels.draw, "screen framebuffer")
+                .await?;
+        screen_framebuffer
+            .resize(executor, &mut channels.draw, display.get_size())
+            .await?;
 
         executor
             .execute_draw(
@@ -118,40 +125,43 @@ impl MainContext {
                     Ok(Box::new(()))
                 }),
             )
+            .await
             .context("unable to initialize test texture (in draw server)")?;
 
         let node_handle = channels.draw.generate_id();
-        executor.execute_draw(
-            &mut channels.draw,
-            Some(ReturnMechanism::Sync),
-            enclose!((blur, renderer) move |server| {
-                server.draw_tree.create_root(node_handle, move |server| {
-                    if let Some(texture) = blur.output_texture_handle().try_get(server) {
-                        let viewport_size = server.display_size;
-                        let vw = viewport_size.width.get() as f32;
-                        let vh = viewport_size.height.get() as f32;
-                        let tw = width as f32;
-                        let th = height as f32;
-                        let var = vw / vh;
-                        let tar = tw / th;
-                        let (hw, hh) = if var < tar {
-                            (0.5 * var / tar, 0.5)
-                        } else {
-                            (0.5, 0.5 * tar / var)
-                        };
-                        renderer.draw(
-                            server,
-                            *texture,
-                            &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                        );
-                    }
+        executor
+            .execute_draw(
+                &mut channels.draw,
+                Some(ReturnMechanism::Sync),
+                enclose!((blur, renderer) move |server| {
+                    server.draw_tree.create_root(node_handle, move |server| {
+                        if let Some(texture) = blur.output_texture_handle().try_get(server) {
+                            let viewport_size = server.display_size;
+                            let vw = viewport_size.width.get() as f32;
+                            let vh = viewport_size.height.get() as f32;
+                            let tw = width as f32;
+                            let th = height as f32;
+                            let var = vw / vh;
+                            let tar = tw / th;
+                            let (hw, hh) = if var < tar {
+                                (0.5 * var / tar, 0.5)
+                            } else {
+                                (0.5, 0.5 * tar / var)
+                            };
+                            renderer.draw(
+                                server,
+                                *texture,
+                                &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
+                            );
+                        }
 
-                    Ok(())
-                });
+                        Ok(())
+                    });
 
-                Ok(Box::new(()))
-            }),
-        )?;
+                    Ok(Box::new(()))
+                }),
+            )
+            .await?;
 
         let mut slf = Self {
             renderer,
@@ -166,11 +176,12 @@ impl MainContext {
             frequency_profiling: false,
             screen_framebuffer,
         };
-        slf.update_blur_texture(executor, slf.display.get_size(), 32.0)?;
+        slf.update_blur_texture(executor, slf.display.get_size(), 32.0)
+            .await?;
         Ok(slf)
     }
 
-    fn update_blur_texture(
+    async fn update_blur_texture(
         &mut self,
         executor: &mut GameServerExecutor,
         window_size: PhysicalSize<u32>,
@@ -184,7 +195,8 @@ impl MainContext {
             self.test_texture.0.clone(),
             0.0,
             blur_factor,
-        )?;
+        )
+        .await?;
         Ok(())
     }
 
@@ -211,7 +223,7 @@ impl MainContext {
                 if let Some(width) = width {
                     if let Some(height) = height {
                         self.channels.draw.resize(PhysicalSize { width, height })?;
-                        self.update_blur_texture(executor, size, 32.0)?;
+                        self.update_blur_texture(executor, size, 32.0).await?;
                     }
                 }
             }
@@ -269,6 +281,7 @@ impl MainContext {
                             Ok(Box::new(()))
                         },
                     )
+                    .await
                     .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
                     .log_warn()
                     .is_some()

@@ -173,7 +173,7 @@ impl GameServerExecutor {
     }
 
     #[allow(irrefutable_let_patterns)]
-    pub fn execute_draw<F>(
+    pub async fn execute_draw<F>(
         &mut self,
         channel: &mut draw::ServerChannel,
         ret: Option<ReturnMechanism>,
@@ -196,7 +196,7 @@ impl GameServerExecutor {
         } else {
             channel.send(draw::RecvMsg::Execute(Box::new(callback), ret))?;
             if let Some(ReturnMechanism::Sync) = ret {
-                if let draw::SendMsg::ExecuteReturn(result) = channel.recv()? {
+                if let draw::SendMsg::ExecuteReturn(result) = channel.recv().await? {
                     return result.map(Some);
                 } else {
                     bail!("unexpected response message from thread");

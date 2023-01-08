@@ -102,7 +102,7 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
     }
 }
 
-impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
+impl<T: GLHandleTrait<A> + 'static, A: 'static> GLGfxHandle<T, A> {
     /// # Safety
     /// 
     /// Use this only if you are going to initialize the handle later
@@ -115,7 +115,7 @@ impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
     }
 
     #[allow(unused_mut)]
-    pub fn new_args(
+    pub async fn new_args(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         return_mechanism: Option<ReturnMechanism>,
@@ -136,7 +136,7 @@ impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
                 }
                 Ok(Box::new(()))
             }),
-        )?;
+        ).await?;
         Ok(slf)
     }
 
@@ -150,14 +150,14 @@ impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
     }
 }
 
-impl<T: GLHandleTrait<()>> GLGfxHandle<T> {
-    pub fn new(
+impl<T: GLHandleTrait<()> + 'static> GLGfxHandle<T> {
+    pub async fn new(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         return_mechanism: Option<ReturnMechanism>,
         name: impl Into<Cow<'static, str>> + Send + 'static,
     ) -> anyhow::Result<Self> {
-        Self::new_args(executor, draw, return_mechanism, name, ())
+        Self::new_args(executor, draw, return_mechanism, name, ()).await
     }
 }
 

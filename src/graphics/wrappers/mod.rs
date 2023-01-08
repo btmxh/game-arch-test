@@ -89,7 +89,7 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
             .send(draw::RecvMsg::Execute(
                 Box::new(move |server| {
                     if let Some(container) = T::get_container_mut(server) {
-                        container.remove(&handle);
+                        unsafe { container.remove(&handle) };
                     }
 
                     Ok(Box::new(()))
@@ -103,7 +103,9 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
 }
 
 impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
-    #[allow(clippy::missing_safety_doc)]
+    /// # Safety
+    /// 
+    /// Use this only if you are going to initialize the handle later
     pub unsafe fn new_uninit(draw: &mut draw::ServerChannel) -> Self {
         Self(Arc::new(GLGfxHandleInner {
             handle: GfxHandle::new(draw),
@@ -139,7 +141,7 @@ impl<T: GLHandleTrait<A>, A> GLGfxHandle<T, A> {
     }
 
     pub fn try_get(&self, server: &draw::Server) -> Option<GLHandle<T, A>> {
-        T::get_container(server).unwrap().get(self)
+        T::get_container(server).and_then(|c| c.get(self))
     }
 
     pub fn get(&self, server: &draw::Server) -> GLHandle<T, A> {
@@ -273,8 +275,30 @@ impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
         handle
     }
 
-    pub fn remove(&mut self, gfx_handle: &GfxHandle<GLHandle<T, A>>) -> Option<GLHandle<T, A>> {
+    /// # Safety
+    ///
+    /// use this only if you put in a replacement immediately (in the implementation of
+    /// the replace fn) or to drop the GLHandle
+    pub unsafe fn remove(
+        &mut self,
+        gfx_handle: &GfxHandle<GLHandle<T, A>>,
+    ) -> Option<GLHandle<T, A>> {
         self.0.remove(&gfx_handle.handle)
+    }
+
+    pub fn replace<F>(
+        &mut self,
+        gfx_handle: &GLGfxHandle<T, A>,
+        transform: F,
+    ) -> anyhow::Result<GLHandle<T, A>>
+    where
+        F: FnOnce(GLHandle<T, A>) -> anyhow::Result<GLHandle<T, A>>,
+    {
+        let old_handle = unsafe { self.remove(&gfx_handle.0.handle) }
+            .expect("replace() called on a null GLHandle");
+        let new_handle = transform(old_handle)?;
+        self.insert(gfx_handle, new_handle.clone());
+        Ok(new_handle)
     }
 
     pub fn get(&self, gfx_handle: &GLGfxHandle<T, A>) -> Option<GLHandle<T, A>> {

@@ -64,11 +64,11 @@ impl<T> Copy for GfxHandle<T> {}
 
 #[derive(Default)]
 pub struct HandleContainer {
-    vertex_arrays: VertexArrayContainer,
-    buffers: BufferContainer,
-    textures: TextureContainer,
-    programs: ProgramContainer,
-    framebuffers: FramebufferContainer,
+    pub vertex_arrays: VertexArrayContainer,
+    pub buffers: BufferContainer,
+    pub textures: TextureContainer,
+    pub programs: ProgramContainer,
+    pub framebuffers: FramebufferContainer,
 }
 
 #[derive(Default)]

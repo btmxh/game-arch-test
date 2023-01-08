@@ -7,8 +7,8 @@ use winit::dpi::PhysicalSize;
 use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
 
 use super::{
-    texture::TextureHandle, GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait,
-    SendGLHandleContainer,
+    texture::{Texture, TextureHandle},
+    GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer,
 };
 
 pub struct FramebufferTrait;
@@ -81,16 +81,14 @@ impl DefaultTextureFramebuffer {
             Some(sz) if size == sz => return Ok(()),
             None => (self.framebuffer.get(server), self.texture.get(server)),
             _ => {
-                let old_texture = server
+                let texture = server
                     .handles
                     .textures
-                    .remove(&self.texture.0.handle)
-                    .unwrap();
-                let new_texture = server
-                    .handles
-                    .create_texture(old_texture.name(), &self.texture)?;
+                    .replace(&self.texture, |old_texture| {
+                        Texture::new(old_texture.name())
+                    })?;
 
-                (self.framebuffer.get(server), new_texture)
+                (self.framebuffer.get(server), texture)
             }
         };
         unsafe {

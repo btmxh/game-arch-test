@@ -16,7 +16,8 @@ use crate::{
         blur::BlurRenderer,
         quad_renderer::QuadRenderer,
         wrappers::{
-            framebuffer::DefaultTextureFramebuffer, texture::TextureHandle,
+            framebuffer::DefaultTextureFramebuffer,
+            texture::{TextureHandle, TextureType},
             vertex_array::VertexArrayHandle,
         },
     },
@@ -61,7 +62,13 @@ impl MainContext {
             .await
             .context("blur renderer initialization failed")?;
 
-        let test_texture = TextureHandle::new(executor, &mut channels.draw, "test texture").await?;
+        let test_texture = TextureHandle::new_args(
+            executor,
+            &mut channels.draw,
+            "test texture",
+            TextureType::E2D,
+        )
+        .await?;
         let img = image::io::Reader::open("BG.jpg")
             .context("unable to load test texture")?
             .decode()
@@ -81,8 +88,8 @@ impl MainContext {
                 &mut channels.draw,
                 enclose!((test_texture) move |server| {
                     let tex_handle = test_texture.get(server);
+                    tex_handle.bind();
                     unsafe {
-                        gl::BindTexture(gl::TEXTURE_2D, *tex_handle);
                         gl::TexImage2D(
                             gl::TEXTURE_2D,
                             0,

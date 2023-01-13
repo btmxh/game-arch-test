@@ -7,7 +7,7 @@ use winit::dpi::PhysicalSize;
 use crate::exec::{executor::GameServerExecutor, server::draw};
 
 use super::{
-    texture::{Texture, TextureHandle},
+    texture::{Texture, TextureHandle, TextureType},
     GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer,
 };
 
@@ -26,6 +26,10 @@ impl GLHandleTrait for FramebufferTrait {
 
     fn delete(handle: GLuint) {
         Self::delete_mul(&[handle])
+    }
+
+    fn bind(handle: GLuint, _: ()) {
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, handle) }
     }
 
     fn identifier() -> GLenum {
@@ -60,8 +64,13 @@ impl DefaultTextureFramebuffer {
     ) -> anyhow::Result<Self> {
         let name = name.into();
         let slf = Self {
-            texture: TextureHandle::new(executor, draw, format!("{name} texture attachment"))
-                .await?,
+            texture: TextureHandle::new_args(
+                executor,
+                draw,
+                format!("{name} texture attachment"),
+                TextureType::E2D,
+            )
+            .await?,
             framebuffer: FramebufferHandle::new(executor, draw, name).await?,
             size: None,
         };
@@ -81,7 +90,7 @@ impl DefaultTextureFramebuffer {
                     .handles
                     .textures
                     .replace(&self.texture, |old_texture| {
-                        Texture::new(old_texture.name())
+                        Texture::new_args(old_texture.name(), TextureType::E2D)
                     })?;
 
                 (self.framebuffer.get(server), texture)

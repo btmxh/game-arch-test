@@ -3,7 +3,7 @@ use winit::dpi::PhysicalSize;
 use crate::exec::{executor::GameServerExecutor, server::draw};
 
 use super::wrappers::{
-    framebuffer::{DefaultTextureFramebuffer, FramebufferHandle},
+    framebuffer::{DefaultTextureFramebuffer, Framebuffer, FramebufferHandle},
     shader::ProgramHandle,
     texture::TextureHandle,
     vertex_array::VertexArrayHandle,
@@ -153,9 +153,9 @@ impl BlurRenderer {
                     .map(|f| f.framebuffer.get(server))
                     .collect::<Vec<_>>();
 
+                vertex_array.bind();
                 unsafe {
                     gl::UseProgram(*program);
-                    gl::BindVertexArray(*vertex_array);
                     gl::Uniform1f(
                         gl::GetUniformLocation(*program, "sigma\0".as_ptr() as *const _),
                         blur_sigma,
@@ -170,8 +170,8 @@ impl BlurRenderer {
                     gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width as f32, 0.0);
                     gl::Uniform1f(loc_lod, lod);
                     gl::ActiveTexture(gl::TEXTURE0);
-                    gl::BindTexture(gl::TEXTURE_2D, *texture.get(server));
-                    gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[0]);
+                    texture.get(server).bind();
+                    framebuffers[0].bind();
                     gl::Clear(gl::COLOR_BUFFER_BIT);
                     gl::Viewport(
                         0,
@@ -183,8 +183,8 @@ impl BlurRenderer {
                     gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height as f32);
                     gl::Uniform1f(loc_lod, 0.0);
                     gl::ActiveTexture(gl::TEXTURE0);
-                    gl::BindTexture(gl::TEXTURE_2D, *slf.framebuffers[0].texture.get(server));
-                    gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[1]);
+                    slf.framebuffers[0].texture.get(server).bind();
+                    framebuffers[1].bind();
                     gl::Clear(gl::COLOR_BUFFER_BIT);
                     gl::Viewport(
                         0,
@@ -193,7 +193,7 @@ impl BlurRenderer {
                         framebuffer_size.height as _,
                     );
                     gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
-                    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                    Framebuffer::unbind_static();
                     gl::Viewport(
                         0,
                         0,

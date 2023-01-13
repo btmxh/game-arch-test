@@ -29,9 +29,10 @@ pub mod shader;
 pub mod texture;
 pub mod vertex_array;
 
-pub trait GLHandleTrait<A = ()> {
+pub trait GLHandleTrait<A: Clone = ()> {
     fn create(args: A) -> GLuint;
     fn delete(handle: GLuint);
+    fn bind(handle: GLuint, args: A);
     fn identifier() -> GLenum;
     fn delete_mul(handles: &[GLuint]) {
         handles.iter().for_each(|&handle| Self::delete(handle));
@@ -52,37 +53,38 @@ pub trait GLHandleTrait<A = ()> {
     }
 }
 
-pub struct GLHandleInner<T: GLHandleTrait<A>, A = ()> {
+pub struct GLHandleInner<T: GLHandleTrait<A>, A: Clone = ()> {
     gl_handle: GLuint,
+    args: A,
     name: Cow<'static, str>,
     _phantom: PhantomData<(T, A)>,
 }
 
-pub struct GLHandle<T: GLHandleTrait<A>, A = ()>(SendRc<GLHandleInner<T, A>>);
+pub struct GLHandle<T: GLHandleTrait<A>, A: Clone = ()>(SendRc<GLHandleInner<T, A>>);
 
-impl<T: GLHandleTrait<A>, A> Clone for GLHandle<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> Clone for GLHandle<T, A> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub struct GLGfxHandle<T: GLHandleTrait<A> + 'static, A: 'static = ()>(
+pub struct GLGfxHandle<T: GLHandleTrait<A> + 'static, A: Clone + 'static = ()>(
     pub Arc<GLGfxHandleInner<T, A>>,
 );
 
-impl<T: GLHandleTrait<A>, A> Clone for GLGfxHandle<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> Clone for GLGfxHandle<T, A> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub struct GLGfxHandleInner<T: GLHandleTrait<A> + 'static, A: 'static = ()> {
+pub struct GLGfxHandleInner<T: GLHandleTrait<A> + 'static, A: Clone + 'static = ()> {
     pub handle: GfxHandle<GLHandle<T, A>>,
     sender: mpsc::UnboundedSender<draw::RecvMsg>,
     _phantom: PhantomData<fn() -> A>,
 }
 
-impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> {
+impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> Drop for GLGfxHandleInner<T, A> {
     fn drop(&mut self) {
         let handle = self.handle;
         self.sender
@@ -101,7 +103,7 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
     }
 }
 
-impl<T: GLHandleTrait<A> + 'static, A: 'static> GLGfxHandle<T, A> {
+impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
     /// # Safety
     ///
     /// Use this only if you are going to initialize the handle later
@@ -159,7 +161,7 @@ impl<T: GLHandleTrait<()> + 'static> GLGfxHandle<T> {
     }
 }
 
-impl<T: GLHandleTrait<A>, A> Deref for GLHandle<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> Deref for GLHandle<T, A> {
     type Target = GLuint;
 
     fn deref(&self) -> &Self::Target {
@@ -167,7 +169,7 @@ impl<T: GLHandleTrait<A>, A> Deref for GLHandle<T, A> {
     }
 }
 
-impl<T: GLHandleTrait<A>, A> Drop for GLHandleInner<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> Drop for GLHandleInner<T, A> {
     fn drop(&mut self) {
         let handle = self.gl_handle;
         if handle != 0 {
@@ -176,10 +178,10 @@ impl<T: GLHandleTrait<A>, A> Drop for GLHandleInner<T, A> {
     }
 }
 
-impl<T: GLHandleTrait<A>, A> GLHandle<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> GLHandle<T, A> {
     pub fn new_args(name: impl Into<Cow<'static, str>>, args: A) -> anyhow::Result<Self> {
         let name = name.into();
-        let handle = T::create(args);
+        let handle = T::create(args.clone());
         if handle == 0 {
             bail!("unable to create GL object for {}", name);
         }
@@ -187,28 +189,41 @@ impl<T: GLHandleTrait<A>, A> GLHandle<T, A> {
         let c_name = CString::new(name.as_ref())?;
         unsafe {
             if gl::ObjectLabel::is_loaded() {
+                T::bind(handle, args.clone());
                 gl::ObjectLabel(
                     T::identifier(),
                     handle,
                     name.len().try_into()?,
                     c_name.as_ptr(),
-                )
+                );
+                T::bind(0, args.clone());
             }
         };
 
-        Ok(Self::wrap(handle, name))
-    }
-
-    pub fn wrap(gl_handle: GLuint, name: Cow<'static, str>) -> Self {
-        Self(SendRc::new(GLHandleInner {
-            gl_handle,
+        Ok(Self(SendRc::new(GLHandleInner {
+            gl_handle: handle,
+            args,
             name,
             _phantom: PhantomData,
-        }))
+        })))
     }
 
     pub fn name(&self) -> Cow<'static, str> {
         self.0.name.clone()
+    }
+
+    pub fn bind(&self) {
+        T::bind(self.0.gl_handle, self.0.args.clone())
+    }
+
+    pub fn unbind(&self) {
+        T::bind(0, self.0.args.clone())
+    }
+}
+
+impl<T: GLHandleTrait<()>> GLHandle<T, ()> {
+    pub fn unbind_static() {
+        T::bind(0, ())
     }
 }
 
@@ -218,23 +233,29 @@ impl<T: GLHandleTrait<()>> GLHandle<T> {
     }
 }
 
-pub struct GLHandleContainer<T: GLHandleTrait<A>, A = ()>(
+pub struct GLHandleContainer<T: GLHandleTrait<A>, A: Clone = ()>(
     HashMap<u64, GLHandle<T, A>>,
     PhantomData<MutexGuard<'static, ()>>, // impl !Send
 );
 
-pub struct SendGLHandleContainer<T: GLHandleTrait<A>, A = ()>(
+pub struct SendGLHandleContainer<T: GLHandleTrait<A>, A: Clone = ()>(
     HashMap<u64, GLHandle<T, A>>,
     PostSend<GLHandleInner<T, A>>,
 );
 
-impl<T: GLHandleTrait<A>, A> Default for SendGLHandleContainer<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> Default for GLHandleContainer<T, A> {
+    fn default() -> Self {
+        Self(HashMap::new(), PhantomData)
+    }
+}
+
+impl<T: GLHandleTrait<A>, A: Clone> Default for SendGLHandleContainer<T, A> {
     fn default() -> Self {
         Self(HashMap::new(), SendRc::pre_send().ready())
     }
 }
 
-impl<T: GLHandleTrait<A>, A> Drop for GLHandleContainer<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> Drop for GLHandleContainer<T, A> {
     fn drop(&mut self) {
         T::delete_mul(self.0.values().map(|h| **h).collect::<Vec<_>>().as_slice());
         let mut empty_map = HashMap::new();
@@ -243,7 +264,7 @@ impl<T: GLHandleTrait<A>, A> Drop for GLHandleContainer<T, A> {
     }
 }
 
-impl<T: GLHandleTrait<A>, A> Drop for SendGLHandleContainer<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> Drop for SendGLHandleContainer<T, A> {
     fn drop(&mut self) {
         T::delete_mul(self.0.values().map(|h| **h).collect::<Vec<_>>().as_slice());
         let mut empty_map = HashMap::new();
@@ -252,7 +273,7 @@ impl<T: GLHandleTrait<A>, A> Drop for SendGLHandleContainer<T, A> {
     }
 }
 
-impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> GLHandleContainer<T, A> {
     pub fn new() -> Self {
         Self(HashMap::new(), PhantomData)
     }
@@ -309,21 +330,18 @@ impl<T: GLHandleTrait<A>, A> GLHandleContainer<T, A> {
             presend.park(&mut value.0);
         }
         let token = presend.ready();
-        SendGLHandleContainer(std::mem::take(&mut self.0), token)
+        let ret = SendGLHandleContainer(std::mem::take(&mut self.0), token);
+        std::mem::forget(self);
+        ret
     }
 }
 
-impl<T: GLHandleTrait<A>, A> SendGLHandleContainer<T, A> {
+impl<T: GLHandleTrait<A>, A: Clone> SendGLHandleContainer<T, A> {
     pub fn to_unsend(mut self) -> GLHandleContainer<T, A> {
         let map = std::mem::take(&mut self.0);
         let token = std::mem::replace(&mut self.1, SendRc::pre_send().ready());
         token.unpark();
+        std::mem::forget(self);
         GLHandleContainer(map, PhantomData)
-    }
-}
-
-impl<T: GLHandleTrait<()>> Default for GLHandleContainer<T> {
-    fn default() -> Self {
-        Self::new()
     }
 }

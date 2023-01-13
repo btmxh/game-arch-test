@@ -70,7 +70,7 @@ impl QuadRenderer {
         let program = self.program.get(server);
 
         unsafe {
-            gl::BindVertexArray(*vao);
+            vao.bind();
             gl::UseProgram(*program);
 
             gl::Uniform2fv(

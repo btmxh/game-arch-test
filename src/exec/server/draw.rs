@@ -79,11 +79,30 @@ impl SendServer {
             .build(Some(display.get_raw_window_handle()));
         let gl_context = unsafe { gl_display.create_context(&gl_config, &context_attribs) }
             .context("unable to create OpenGL context")?;
+        let display_size = display.get_size();
+        let gl_surface = unsafe {
+            gl_display
+                .create_window_surface(
+                    &gl_config,
+                    &SurfaceAttributesBuilder::<WindowSurface>::new().build(
+                        display.get_raw_window_handle(),
+                        NonZeroU32::new(display_size.width).unwrap(),
+                        NonZeroU32::new(display_size.height).unwrap(),
+                    ),
+                )
+                .context("unable to create window surface for OpenGL rendering")?
+        };
+        let current_gl_context = gl_context
+            .make_current(&gl_surface)
+            .context("unable to make OpenGL context current")?;
         gl::load_with(|symbol| {
             let symbol = CString::new(symbol).unwrap();
             gl_display.get_proc_address(symbol.as_c_str()).cast()
         });
         enable_gl_debug_callback();
+        let gl_context = current_gl_context
+            .make_not_current()
+            .context("unable to make GL context not current")?;
         let display_size = {
             let size = display.get_size();
             PhysicalSize {

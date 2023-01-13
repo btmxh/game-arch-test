@@ -16,6 +16,7 @@ use crate::{
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
 pub struct ShaderTrait;
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ShaderType {
     Vertex = gl::VERTEX_SHADER as isize,
     Fragment = gl::FRAGMENT_SHADER as isize,
@@ -32,6 +33,8 @@ impl GLHandleTrait<ShaderType> for ShaderTrait {
     fn delete(handle: GLuint) {
         unsafe { gl::DeleteShader(handle) }
     }
+
+    fn bind(_: GLuint, _: ShaderType) {}
 
     fn identifier() -> GLenum {
         gl::SHADER
@@ -55,6 +58,8 @@ impl GLHandleTrait for ProgramTrait {
     fn identifier() -> GLenum {
         gl::PROGRAM
     }
+
+    fn bind(_: GLuint, _: ()) {}
 
     fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
         Some(&mut server.handles.programs)

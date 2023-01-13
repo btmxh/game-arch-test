@@ -4,7 +4,7 @@ use anyhow::Context;
 use gl::types::GLuint;
 use glsl_layout::vec2;
 
-use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
+use crate::exec::{executor::GameServerExecutor, server::draw};
 
 use super::wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle};
 
@@ -53,10 +53,10 @@ impl QuadRenderer {
             executor,
             draw,
             "quad renderer shader program",
-            Some(ReturnMechanism::Sync),
             shader::VERTEX,
             shader::FRAGMENT,
-        ).await
+        )
+        .await
         .context("quad renderer initialization (in draw server) failed")?;
 
         Ok(Self {

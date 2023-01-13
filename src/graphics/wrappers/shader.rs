@@ -9,7 +9,7 @@ use gl::types::{GLchar, GLenum, GLuint};
 
 use crate::{
     enclose,
-    exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw},
+    exec::{executor::GameServerExecutor, server::draw},
     graphics::GfxHandle,
 };
 
@@ -155,19 +155,19 @@ impl ProgramHandle {
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
-        ret: Option<ReturnMechanism>,
         vertex: &'static str,
         fragment: &'static str,
     ) -> anyhow::Result<Self> {
         let handle = unsafe { Self::new_uninit(draw) };
-        executor.execute_draw(
-            draw,
-            ret,
-            enclose!((handle) move |server| {
-                server.handles.create_vf_program(name, &handle, vertex, fragment)?;
-                Ok(Box::new(()))
-            }),
-        ).await?;
+        executor
+            .execute_draw_sync(
+                draw,
+                enclose!((handle) move |server| {
+                    server.handles.create_vf_program(name, &handle, vertex, fragment)?;
+                    Ok(None::<()>)
+                }),
+            )
+            .await?;
         Ok(handle)
     }
 }

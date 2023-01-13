@@ -4,7 +4,7 @@ use gl::types::{GLenum, GLuint};
 use glutin::prelude::GlConfig;
 use winit::dpi::PhysicalSize;
 
-use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
+use crate::exec::{executor::GameServerExecutor, server::draw};
 
 use super::{
     texture::{Texture, TextureHandle},
@@ -60,13 +60,9 @@ impl DefaultTextureFramebuffer {
     ) -> anyhow::Result<Self> {
         let name = name.into();
         let slf = Self {
-            texture: TextureHandle::new(
-                executor,
-                draw,
-                Some(ReturnMechanism::Sync),
-                format!("{name} texture attachment"),
-            ).await?,
-            framebuffer: FramebufferHandle::new(executor, draw, Some(ReturnMechanism::Sync), name).await?,
+            texture: TextureHandle::new(executor, draw, format!("{name} texture attachment"))
+                .await?,
+            framebuffer: FramebufferHandle::new(executor, draw, name).await?,
             size: None,
         };
         Ok(slf)
@@ -144,10 +140,12 @@ impl DefaultTextureFramebuffer {
 
         let slf = self.clone();
         self.size = Some(new_size);
-        executor.execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
-            slf.resize_in_server(server, new_size)?;
-            Ok(Box::new(()))
-        }).await?;
+        executor
+            .execute_draw_sync(draw, move |server| {
+                slf.resize_in_server(server, new_size)?;
+                Ok(Box::new(()))
+            })
+            .await?;
         Ok(())
     }
 }

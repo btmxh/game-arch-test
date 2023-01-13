@@ -13,8 +13,8 @@ use sendable::{send_rc::PostSend, SendRc};
 
 use crate::{
     enclose,
+    events::GameUserEvent,
     exec::{
-        dispatch::ReturnMechanism,
         executor::GameServerExecutor,
         server::{draw, GameServerChannel},
     },
@@ -86,15 +86,14 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
     fn drop(&mut self) {
         let handle = self.handle;
         self.sender
-            .send(draw::RecvMsg::Execute(
+            .send(draw::RecvMsg::ExecuteEvent(
                 Box::new(move |server| {
                     if let Some(container) = T::get_container_mut(server) {
                         unsafe { container.remove(&handle) };
                     }
 
-                    Ok(Box::new(()))
+                    Box::new(std::iter::empty::<GameUserEvent>())
                 }),
-                None,
             ))
             .map_err(|e| anyhow::format_err!("{}", e))
             .context("unable to send GL handle drop execute message to draw server, the connection was closed (the handles were probably dropped with the server earlier, if so this is not a leak)")
@@ -104,7 +103,7 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> Drop for GLGfxHandleInner<T, A> 
 
 impl<T: GLHandleTrait<A> + 'static, A: 'static> GLGfxHandle<T, A> {
     /// # Safety
-    /// 
+    ///
     /// Use this only if you are going to initialize the handle later
     pub unsafe fn new_uninit(draw: &mut draw::ServerChannel) -> Self {
         Self(Arc::new(GLGfxHandleInner {
@@ -118,7 +117,6 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> GLGfxHandle<T, A> {
     pub async fn new_args(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
-        return_mechanism: Option<ReturnMechanism>,
         name: impl Into<Cow<'static, str>> + Send + 'static,
         args: A,
     ) -> anyhow::Result<Self>
@@ -126,17 +124,18 @@ impl<T: GLHandleTrait<A> + 'static, A: 'static> GLGfxHandle<T, A> {
         A: Send,
     {
         let slf = unsafe { Self::new_uninit(draw) };
-        executor.execute_draw(
-            draw,
-            return_mechanism,
-            enclose!((slf) move |server| {
-                if let Some(container) = T::get_container_mut(server) {
-                    let handle = GLHandle::<T, A>::new_args(name, args)?;
-                    container.insert(&slf, handle);
-                }
-                Ok(Box::new(()))
-            }),
-        ).await?;
+        executor
+            .execute_draw_sync(
+                draw,
+                enclose!((slf) move |server| {
+                    if let Some(container) = T::get_container_mut(server) {
+                        let handle = GLHandle::<T, A>::new_args(name, args)?;
+                        container.insert(&slf, handle);
+                    }
+                    Ok(Box::new(()))
+                }),
+            )
+            .await?;
         Ok(slf)
     }
 
@@ -154,10 +153,9 @@ impl<T: GLHandleTrait<()> + 'static> GLGfxHandle<T> {
     pub async fn new(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
-        return_mechanism: Option<ReturnMechanism>,
         name: impl Into<Cow<'static, str>> + Send + 'static,
     ) -> anyhow::Result<Self> {
-        Self::new_args(executor, draw, return_mechanism, name, ()).await
+        Self::new_args(executor, draw, name, ()).await
     }
 }
 

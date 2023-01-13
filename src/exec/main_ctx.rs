@@ -24,7 +24,7 @@ use crate::{
 };
 
 use super::{
-    dispatch::{DispatchId, DispatchList, ReturnMechanism},
+    dispatch::{DispatchId, DispatchList},
     executor::GameServerExecutor,
     server::ServerChannels,
 };
@@ -52,13 +52,8 @@ impl MainContext {
         dispatch_list: DispatchList,
         mut channels: ServerChannels,
     ) -> anyhow::Result<Self> {
-        let dummy_vao = VertexArrayHandle::new(
-            executor,
-            &mut channels.draw,
-            Some(ReturnMechanism::Sync),
-            "dummy vertex array",
-        )
-        .await?;
+        let dummy_vao =
+            VertexArrayHandle::new(executor, &mut channels.draw, "dummy vertex array").await?;
         let renderer = QuadRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
             .await
             .context("quad renderer initialization failed")?;
@@ -66,13 +61,7 @@ impl MainContext {
             .await
             .context("blur renderer initialization failed")?;
 
-        let test_texture = TextureHandle::new(
-            executor,
-            &mut channels.draw,
-            Some(ReturnMechanism::Sync),
-            "test texture",
-        )
-        .await?;
+        let test_texture = TextureHandle::new(executor, &mut channels.draw, "test texture").await?;
         let img = image::io::Reader::open("BG.jpg")
             .context("unable to load test texture")?
             .decode()
@@ -88,9 +77,8 @@ impl MainContext {
             .await?;
 
         executor
-            .execute_draw(
+            .execute_draw_event(
                 &mut channels.draw,
-                Some(ReturnMechanism::Sync),
                 enclose!((test_texture) move |server| {
                     let tex_handle = test_texture.get(server);
                     unsafe {
@@ -122,17 +110,15 @@ impl MainContext {
                         );
                         gl::GenerateMipmap(gl::TEXTURE_2D);
                     };
-                    Ok(Box::new(()))
+                    []
                 }),
             )
-            .await
-            .context("unable to initialize test texture (in draw server)")?;
+            .context("unable to send test texture initialization callback to draw server")?;
 
         let node_handle = channels.draw.generate_id();
         executor
-            .execute_draw(
+            .execute_draw_sync(
                 &mut channels.draw,
-                Some(ReturnMechanism::Sync),
                 enclose!((blur, renderer) move |server| {
                     server.draw_tree.create_root(node_handle, move |server| {
                         if let Some(texture) = blur.output_texture_handle().try_get(server) {
@@ -273,14 +259,10 @@ impl MainContext {
                     SwapInterval::DontWait
                 };
                 if executor
-                    .execute_draw(
-                        &mut self.channels.draw,
-                        Some(ReturnMechanism::Sync),
-                        move |s| {
-                            s.set_swap_interval(interval)?;
-                            Ok(Box::new(()))
-                        },
-                    )
+                    .execute_draw_sync(&mut self.channels.draw, move |s| {
+                        s.set_swap_interval(interval)?;
+                        Ok(Box::new(()))
+                    })
                     .await
                     .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
                     .log_warn()

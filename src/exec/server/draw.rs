@@ -1,11 +1,9 @@
 use crate::{
     events::GameUserEvent,
-    exec::dispatch::ReturnMechanism,
     graphics::{
         debug_callback::enable_gl_debug_callback, tree::DrawTree, HandleContainer,
         SendHandleContainer,
     },
-    handle_msg,
     utils::{
         error::ResultExt,
         mpsc::{UnboundedReceiver, UnboundedSender},
@@ -26,18 +24,21 @@ use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
 use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
 
-pub type ExecuteCallbackReturnType = anyhow::Result<Box<dyn Any + Send + Sync>>;
-pub type ExecuteCallback = dyn FnOnce(&mut Server) -> ExecuteCallbackReturnType + Send;
-
 pub type DrawCallback = dyn Fn(&Server) -> anyhow::Result<()> + Send;
 
 pub enum SendMsg {
-    ExecuteReturn(ExecuteCallbackReturnType),
+    ExecuteSyncReturn(Box<dyn Any + Send>),
 }
+
+type ExecuteSyncReturnType = Box<dyn Any + Send + 'static>;
+type ExecuteEventReturnType = Box<dyn Iterator<Item = GameUserEvent>>;
+type ExecuteCallback<R> = dyn FnOnce(&mut Server) -> R + Send;
+
 pub enum RecvMsg {
     SetFrequencyProfiling(bool),
     Resize(PhysicalSize<NonZeroU32>),
-    Execute(Box<ExecuteCallback>, Option<ReturnMechanism>),
+    ExecuteSync(Box<ExecuteCallback<ExecuteSyncReturnType>>),
+    ExecuteEvent(Box<ExecuteCallback<ExecuteEventReturnType>>),
 }
 pub struct Server {
     pub draw_tree: DrawTree,
@@ -131,15 +132,17 @@ impl Server {
             match message {
                 RecvMsg::Resize(new_size) => resize = Some(new_size),
                 RecvMsg::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
-                RecvMsg::Execute(callback, ret) => {
+                RecvMsg::ExecuteSync(callback) => {
                     let result = callback(self);
-                    handle_msg!(
-                        self,
-                        ret,
-                        "Execute",
-                        || SendMsg::ExecuteReturn(result),
-                        |id| { GameUserEvent::ExecuteReturn(result, id) }
+                    self.base.send(SendMsg::ExecuteSyncReturn(result)).context(
+                        "unable to send ExecuteSyncReturn message for Sync return mechanism",
                     )?;
+                }
+                RecvMsg::ExecuteEvent(callback) => {
+                    callback(self)
+                        .into_iter()
+                        .try_for_each(|evt| self.base.proxy.send_event(evt))
+                        .context("unable to send ExecuteReturnEvent event to event loop")?;
                 }
             }
         }

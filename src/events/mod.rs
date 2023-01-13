@@ -1,9 +1,6 @@
 use glutin::surface::SwapInterval;
 
-use crate::exec::{
-    dispatch::{DispatchId, DispatchMsg},
-    server::draw::ExecuteCallbackReturnType,
-};
+use crate::exec::dispatch::{DispatchId, DispatchMsg};
 
 pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
 
@@ -12,5 +9,8 @@ pub enum GameUserEvent {
     Exit,
     Dispatch(DispatchMsg),
     VSyncSet(Option<SwapInterval>, Option<DispatchId>),
-    ExecuteReturn(ExecuteCallbackReturnType, Option<DispatchId>),
+    ExecuteReturn(ExecuteReturnEvent, Option<DispatchId>),
 }
+
+#[derive(Debug)]
+pub enum ExecuteReturnEvent {}

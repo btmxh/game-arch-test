@@ -1,7 +1,4 @@
-use std::{
-    any::Any,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context};
 use futures::executor::block_on;
@@ -14,17 +11,12 @@ use winit::{
 use crate::{events::GameUserEvent, utils::error::ResultExt};
 
 use super::{
-    dispatch::ReturnMechanism,
     main_ctx::MainContext,
     runner::{
         container::ServerContainer, MainRunner, Runner, RunnerId, ServerMover, ThreadRunnerHandle,
         MAIN_RUNNER_ID,
     },
-    server::{
-        audio,
-        draw::{self, ExecuteCallbackReturnType},
-        update, GameServerChannel, SendGameServer, ServerKind,
-    },
+    server::{audio, draw, update, GameServerChannel, SendGameServer, ServerKind},
     NUM_GAME_LOOPS,
 };
 
@@ -171,37 +163,52 @@ impl GameServerExecutor {
     }
 
     #[allow(irrefutable_let_patterns)]
-    pub async fn execute_draw<F>(
+    pub async fn execute_draw_sync<F, R>(
         &mut self,
         channel: &mut draw::ServerChannel,
-        ret: Option<ReturnMechanism>,
         callback: F,
-    ) -> anyhow::Result<Option<Box<dyn Any + Send + Sync>>>
+    ) -> anyhow::Result<R>
     where
-        F: FnOnce(&mut draw::Server) -> ExecuteCallbackReturnType + Send + 'static,
+        R: Send + 'static,
+        F: FnOnce(&mut draw::Server) -> anyhow::Result<R> + Send + 'static,
     {
         if let Some(server) = self.main_runner.base.container.draw.as_mut() {
-            let result = callback(server);
-            match ret {
-                Some(ReturnMechanism::Event(id)) => {
-                    self.proxy
-                        .send_event(GameUserEvent::ExecuteReturn(result, id))
-                        .context("unable to send ExecuteReturn event for Event return mechanism")?;
-                }
-                Some(ReturnMechanism::Sync) => return result.map(Some),
-                _ => {}
-            }
+            callback(server)
         } else {
-            channel.send(draw::RecvMsg::Execute(Box::new(callback), ret))?;
-            if let Some(ReturnMechanism::Sync) = ret {
-                if let draw::SendMsg::ExecuteReturn(result) = channel.recv().await? {
-                    return result.map(Some);
-                } else {
-                    bail!("unexpected response message from thread");
-                }
+            channel.send(draw::RecvMsg::ExecuteSync(Box::new(move |server| {
+                Box::new(callback(server))
+            })))?;
+            if let draw::SendMsg::ExecuteSyncReturn(result) = channel.recv().await? {
+                Ok(result
+                    .downcast::<anyhow::Result<R>>()
+                    .map(|bx| *bx)
+                    .map_err(|_| {
+                        anyhow::format_err!("unable to downcast callback return value")
+                    })??)
+            } else {
+                bail!("unexpected response message from thread");
             }
         }
+    }
 
-        Ok(None)
+    pub fn execute_draw_event<F, R>(
+        &mut self,
+        channel: &mut draw::ServerChannel,
+        callback: F,
+    ) -> anyhow::Result<()>
+    where
+        R: IntoIterator<Item = GameUserEvent> + Send + 'static,
+        F: FnOnce(&mut draw::Server) -> R + Send + 'static,
+    {
+        if let Some(server) = self.main_runner.base.container.draw.as_mut() {
+            callback(server)
+                .into_iter()
+                .try_for_each(|evt| self.proxy.send_event(evt))
+                .context("unable to send ExecuteReturnEvent event to event loop")
+        } else {
+            channel.send(draw::RecvMsg::ExecuteEvent(Box::new(move |server| {
+                Box::new(callback(server).into_iter())
+            })))
+        }
     }
 }

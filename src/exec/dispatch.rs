@@ -62,8 +62,8 @@ pub enum DispatchMsg {
     ExecuteDispatch(Vec<DispatchId>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ReturnMechanism {
-    Sync,
-    Event(Option<DispatchId>),
-}
+// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// pub enum ReturnMechanism {
+//     Sync,
+//     Event(Option<DispatchId>),
+// }

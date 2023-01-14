@@ -10,6 +10,7 @@ pub enum GameUserEvent {
     Dispatch(DispatchMsg),
     VSyncSet(Option<SwapInterval>, Option<DispatchId>),
     ExecuteReturn(ExecuteReturnEvent, Option<DispatchId>),
+    Error(anyhow::Error),
 }
 
 #[derive(Debug)]

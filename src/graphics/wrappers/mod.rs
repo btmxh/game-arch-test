@@ -116,7 +116,7 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
     }
 
     #[allow(unused_mut)]
-    pub async fn new_args(
+    pub fn new_args(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
@@ -126,18 +126,19 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
         A: Send,
     {
         let slf = unsafe { Self::new_uninit(draw) };
-        executor
-            .execute_draw_sync(
-                draw,
-                enclose!((slf) move |server| {
-                    if let Some(container) = T::get_container_mut(server) {
-                        let handle = GLHandle::<T, A>::new_args(name, args)?;
-                        container.insert(&slf, handle);
-                    }
-                    Ok(Box::new(()))
-                }),
-            )
-            .await?;
+        executor.execute_draw_event(
+            draw,
+            enclose!((slf) move |server| {
+                if let Some(container) = T::get_container_mut(server) {
+                    return GLHandle::<T, A>::new_args(name, args)
+                        .map(|handle| container.insert(&slf, handle))
+                        .err()
+                        .map(GameUserEvent::Error);
+                }
+                
+                None
+            }),
+        )?;
         Ok(slf)
     }
 
@@ -152,12 +153,12 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
 }
 
 impl<T: GLHandleTrait<()> + 'static> GLGfxHandle<T> {
-    pub async fn new(
+    pub fn new(
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
     ) -> anyhow::Result<Self> {
-        Self::new_args(executor, draw, name, ()).await
+        Self::new_args(executor, draw, name, ())
     }
 }
 

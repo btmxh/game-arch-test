@@ -45,30 +45,59 @@ pub struct MainContext {
 }
 
 impl MainContext {
-    #[allow(unused_mut)]
-    pub async fn new(
+    #[tracing::instrument(skip(executor, display, event_loop_proxy, dispatch_list, channels))]
+    pub fn new(
         executor: &mut GameServerExecutor,
         display: Display,
         event_loop_proxy: EventLoopProxy<GameUserEvent>,
         dispatch_list: DispatchList,
         mut channels: ServerChannels,
     ) -> anyhow::Result<Self> {
-        let dummy_vao =
-            VertexArrayHandle::new(executor, &mut channels.draw, "dummy vertex array").await?;
+        let dummy_vao = VertexArrayHandle::new(executor, &mut channels.draw, "dummy vertex array")?;
         let renderer = QuadRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
-            .await
             .context("quad renderer initialization failed")?;
-        let mut blur = BlurRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
-            .await
+        let blur = BlurRenderer::new(executor, dummy_vao.clone(), &mut channels.draw)
             .context("blur renderer initialization failed")?;
 
+        let mut screen_framebuffer =
+            DefaultTextureFramebuffer::new(executor, &mut channels.draw, "screen framebuffer")
+                .context("screen framebuffer initialization failed")?;
+        screen_framebuffer.resize(executor, &mut channels.draw, display.get_size())?;
+
+        let test_texture =
+            Self::init_test_texture(executor, &mut channels, blur.clone(), renderer.clone())?;
+
+        let mut slf = Self {
+            renderer,
+            blur,
+            dummy_vao,
+            test_texture,
+            display,
+            event_loop_proxy,
+            dispatch_list,
+            channels,
+            vsync: true,
+            frequency_profiling: false,
+            screen_framebuffer,
+        };
+        slf.update_blur_texture(executor, slf.display.get_size(), 32.0)?;
+        Ok(slf)
+    }
+
+    #[allow(unused_mut)]
+    #[tracing::instrument(skip(executor, channels, blur, renderer))]
+    fn init_test_texture(
+        executor: &mut GameServerExecutor,
+        channels: &mut ServerChannels,
+        blur: BlurRenderer,
+        renderer: QuadRenderer,
+    ) -> anyhow::Result<(TextureHandle, PhysicalSize<u32>)> {
         let test_texture = TextureHandle::new_args(
             executor,
             &mut channels.draw,
             "test texture",
             TextureType::E2D,
-        )
-        .await?;
+        )?;
         let img = image::io::Reader::open("BG.jpg")
             .context("unable to load test texture")?
             .decode()
@@ -76,13 +105,6 @@ impl MainContext {
             .into_rgba8();
         let width = img.width();
         let height = img.height();
-        let mut screen_framebuffer =
-            DefaultTextureFramebuffer::new(executor, &mut channels.draw, "screen framebuffer")
-                .await?;
-        screen_framebuffer
-            .resize(executor, &mut channels.draw, display.get_size())
-            .await?;
-
         executor
             .execute_draw_event(
                 &mut channels.draw,
@@ -121,75 +143,52 @@ impl MainContext {
                 }),
             )
             .context("unable to send test texture initialization callback to draw server")?;
-
         let node_handle = channels.draw.generate_id();
-        executor
-            .execute_draw_sync(
-                &mut channels.draw,
-                enclose!((blur, renderer) move |server| {
-                    server.draw_tree.create_root(node_handle, move |server| {
-                        if let Some(texture) = blur.output_texture_handle().try_get(server) {
-                            let viewport_size = server.display_size;
-                            let vw = viewport_size.width.get() as f32;
-                            let vh = viewport_size.height.get() as f32;
-                            let tw = width as f32;
-                            let th = height as f32;
-                            let var = vw / vh;
-                            let tar = tw / th;
-                            let (hw, hh) = if var < tar {
-                                (0.5 * var / tar, 0.5)
-                            } else {
-                                (0.5, 0.5 * tar / var)
-                            };
-                            renderer.draw(
-                                server,
-                                *texture,
-                                &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                            );
-                        }
+        executor.execute_draw_event(&mut channels.draw, move |server| {
+            server.draw_tree.create_root(node_handle, move |server| {
+                if let Some(texture) = blur.output_texture_handle().try_get(server) {
+                    let viewport_size = server.display_size;
+                    let vw = viewport_size.width.get() as f32;
+                    let vh = viewport_size.height.get() as f32;
+                    let tw = width as f32;
+                    let th = height as f32;
+                    let var = vw / vh;
+                    let tar = tw / th;
+                    let (hw, hh) = if var < tar {
+                        (0.5 * var / tar, 0.5)
+                    } else {
+                        (0.5, 0.5 * tar / var)
+                    };
+                    renderer.draw(
+                        server,
+                        *texture,
+                        &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
+                    );
+                }
 
-                        Ok(())
-                    });
+                Ok(())
+            });
 
-                    Ok(Box::new(()))
-                }),
-            )
-            .await?;
+            []
+        })?;
 
-        let mut slf = Self {
-            renderer,
-            blur,
-            dummy_vao,
-            test_texture: (test_texture, PhysicalSize { width, height }),
-            display,
-            event_loop_proxy,
-            dispatch_list,
-            channels,
-            vsync: true,
-            frequency_profiling: false,
-            screen_framebuffer,
-        };
-        slf.update_blur_texture(executor, slf.display.get_size(), 32.0)
-            .await?;
-        Ok(slf)
+        Ok((test_texture, PhysicalSize { width, height }))
     }
 
-    async fn update_blur_texture(
+    fn update_blur_texture(
         &mut self,
         executor: &mut GameServerExecutor,
         window_size: PhysicalSize<u32>,
         blur_factor: f32,
     ) -> anyhow::Result<()> {
-        let mut blur = self.blur.clone();
-        blur.redraw(
+        self.blur.redraw(
             executor,
             &mut self.channels.draw,
             window_size,
             self.test_texture.0.clone(),
             0.0,
             blur_factor,
-        )
-        .await?;
+        )?;
         Ok(())
     }
 
@@ -216,7 +215,7 @@ impl MainContext {
                 if let Some(width) = width {
                     if let Some(height) = height {
                         self.channels.draw.resize(PhysicalSize { width, height })?;
-                        self.update_blur_texture(executor, size, 32.0).await?;
+                        self.update_blur_texture(executor, size, 32.0)?;
                     }
                 }
             }
@@ -311,6 +310,10 @@ impl MainContext {
                     .for_each(|(id, d)| {
                         d(self, id);
                     });
+            }
+
+            Event::UserEvent(GameUserEvent::Error(e)) => {
+                tracing::error!("GameUserEvent::Error caught: {}", e);
             }
 
             _ => {}

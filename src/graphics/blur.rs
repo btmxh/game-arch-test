@@ -93,7 +93,7 @@ pub struct BlurRenderer {
 
 impl BlurRenderer {
     #[allow(unused_mut)]
-    pub async fn new(
+    pub fn new(
         executor: &mut GameServerExecutor,
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
@@ -104,12 +104,9 @@ impl BlurRenderer {
             "blur shader program",
             shader::VERTEX,
             shader::FRAGMENT,
-        )
-        .await?;
-        let framebuffer_0 =
-            DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0").await?;
-        let framebuffer_1 =
-            DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0").await?;
+        )?;
+        let framebuffer_0 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0")?;
+        let framebuffer_1 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 1")?;
         let framebuffers = [framebuffer_0, framebuffer_1];
         // unstable lol
         // let framebuffers = Self::zero_range_two().try_map(|i| {
@@ -123,7 +120,7 @@ impl BlurRenderer {
         })
     }
 
-    pub async fn redraw(
+    pub fn redraw(
         &mut self,
         executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
@@ -139,71 +136,68 @@ impl BlurRenderer {
         };
         let blur_sigma = blur_sigma * downscale;
         for framebuffer in self.framebuffers.iter_mut() {
-            framebuffer.resize(executor, draw, framebuffer_size).await?;
+            framebuffer.resize(executor, draw, framebuffer_size)?;
         }
 
         let slf = self.clone();
-        executor
-            .execute_draw_sync(draw, move |server| {
-                let program = slf.program.get(server);
-                let vertex_array = slf.vertex_array.get(server);
-                let framebuffers = slf
-                    .framebuffers
-                    .iter()
-                    .map(|f| f.framebuffer.get(server))
-                    .collect::<Vec<_>>();
+        executor.execute_draw_event(draw, move |server| {
+            let program = slf.program.get(server);
+            let vertex_array = slf.vertex_array.get(server);
+            let framebuffers = slf
+                .framebuffers
+                .iter()
+                .map(|f| f.framebuffer.get(server))
+                .collect::<Vec<_>>();
 
-                vertex_array.bind();
-                unsafe {
-                    gl::UseProgram(*program);
-                    gl::Uniform1f(
-                        gl::GetUniformLocation(*program, "sigma\0".as_ptr() as *const _),
-                        blur_sigma,
-                    );
-                    gl::Uniform1i(
-                        gl::GetUniformLocation(*program, "tex\0".as_ptr() as *const _),
-                        0,
-                    );
-                    let loc_pixel =
-                        gl::GetUniformLocation(*program, "pixel\0".as_ptr() as *const _);
-                    let loc_lod = gl::GetUniformLocation(*program, "lod\0".as_ptr() as *const _);
-                    gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width as f32, 0.0);
-                    gl::Uniform1f(loc_lod, lod);
-                    gl::ActiveTexture(gl::TEXTURE0);
-                    texture.get(server).bind();
-                    framebuffers[0].bind();
-                    gl::Clear(gl::COLOR_BUFFER_BIT);
-                    gl::Viewport(
-                        0,
-                        0,
-                        framebuffer_size.width as _,
-                        framebuffer_size.height as _,
-                    );
-                    gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
-                    gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height as f32);
-                    gl::Uniform1f(loc_lod, 0.0);
-                    gl::ActiveTexture(gl::TEXTURE0);
-                    slf.framebuffers[0].texture.get(server).bind();
-                    framebuffers[1].bind();
-                    gl::Clear(gl::COLOR_BUFFER_BIT);
-                    gl::Viewport(
-                        0,
-                        0,
-                        framebuffer_size.width as _,
-                        framebuffer_size.height as _,
-                    );
-                    gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
-                    Framebuffer::unbind_static();
-                    gl::Viewport(
-                        0,
-                        0,
-                        window_size.width.try_into().unwrap(),
-                        window_size.height.try_into().unwrap(),
-                    );
-                };
-                Ok(Box::new(()))
-            })
-            .await?;
+            vertex_array.bind();
+            unsafe {
+                gl::UseProgram(*program);
+                gl::Uniform1f(
+                    gl::GetUniformLocation(*program, "sigma\0".as_ptr() as *const _),
+                    blur_sigma,
+                );
+                gl::Uniform1i(
+                    gl::GetUniformLocation(*program, "tex\0".as_ptr() as *const _),
+                    0,
+                );
+                let loc_pixel = gl::GetUniformLocation(*program, "pixel\0".as_ptr() as *const _);
+                let loc_lod = gl::GetUniformLocation(*program, "lod\0".as_ptr() as *const _);
+                gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width as f32, 0.0);
+                gl::Uniform1f(loc_lod, lod);
+                gl::ActiveTexture(gl::TEXTURE0);
+                texture.get(server).bind();
+                framebuffers[0].bind();
+                gl::Clear(gl::COLOR_BUFFER_BIT);
+                gl::Viewport(
+                    0,
+                    0,
+                    framebuffer_size.width as _,
+                    framebuffer_size.height as _,
+                );
+                gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+                gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height as f32);
+                gl::Uniform1f(loc_lod, 0.0);
+                gl::ActiveTexture(gl::TEXTURE0);
+                slf.framebuffers[0].texture.get(server).bind();
+                framebuffers[1].bind();
+                gl::Clear(gl::COLOR_BUFFER_BIT);
+                gl::Viewport(
+                    0,
+                    0,
+                    framebuffer_size.width as _,
+                    framebuffer_size.height as _,
+                );
+                gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+                Framebuffer::unbind_static();
+                gl::Viewport(
+                    0,
+                    0,
+                    window_size.width.try_into().unwrap(),
+                    window_size.height.try_into().unwrap(),
+                );
+            };
+            []
+        })?;
         Ok(())
     }
 

@@ -8,7 +8,6 @@ use exec::{
     runner::MAIN_RUNNER_ID,
     server::{audio, draw, update, ServerChannels, ServerKind},
 };
-use futures::executor::block_on;
 use utils::{args::parse_args, log::init_log};
 use winit::{dpi::PhysicalSize, event_loop::EventLoopBuilder};
 
@@ -42,15 +41,12 @@ fn main() -> anyhow::Result<()> {
     executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
     executor.move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)?;
     executor.set_frequency(0, 1000.0)?;
-    let main_ctx = block_on(async {
-        MainContext::new(
-            &mut executor,
-            display,
-            event_loop_proxy,
-            dispatch_list,
-            channels,
-        )
-        .await
-    })?;
+    let main_ctx = MainContext::new(
+        &mut executor,
+        display,
+        event_loop_proxy,
+        dispatch_list,
+        channels,
+    )?;
     executor.run(event_loop, main_ctx, guard);
 }

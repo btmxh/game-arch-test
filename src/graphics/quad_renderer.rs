@@ -44,7 +44,7 @@ pub struct QuadRenderer {
 
 impl QuadRenderer {
     #[allow(unused_mut)]
-    pub async fn new(
+    pub fn new(
         executor: &mut GameServerExecutor,
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
@@ -56,7 +56,6 @@ impl QuadRenderer {
             shader::VERTEX,
             shader::FRAGMENT,
         )
-        .await
         .context("quad renderer initialization (in draw server) failed")?;
 
         Ok(Self {

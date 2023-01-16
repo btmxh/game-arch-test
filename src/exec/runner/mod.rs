@@ -1,6 +1,7 @@
 use async_thread::JoinHandle;
 
 use anyhow::{bail, Context};
+use async_trait::async_trait;
 
 use crate::utils::{
     clock::SteadyClock,
@@ -32,8 +33,8 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn run_single(&mut self) -> anyhow::Result<()> {
-        self.container.run_single(self.frequency)?;
+    pub async fn run_single(&mut self) -> anyhow::Result<()> {
+        self.container.run_single(self.frequency).await?;
         self.sync.sync(self.frequency);
         Ok(())
     }
@@ -58,11 +59,12 @@ impl ThreadRunner {
             .map_err(|e| anyhow::format_err!("{}", e))
     }
 
-    pub fn run(mut self) {
+    pub async fn run(mut self) {
         loop {
             let pending_msgs = self
                 .receiver
                 .receive_all_pending(self.base.container.is_empty())
+                .await
                 .expect("thread runner channel was unexpectedly closed");
             for msg in pending_msgs {
                 match msg {
@@ -71,12 +73,14 @@ impl ThreadRunner {
                         .base
                         .container
                         .emplace_server_check(server)
+                        .await
                         .expect("error emplacing server"),
                     ToRunnerMsg::RequestServer(kind) => {
                         let server = self
                             .base
                             .container
                             .take_server(kind)
+                            .await
                             .expect("error taking server");
                         self.send(FromRunnerMsg::MoveServer(server))
                             .expect("thread runner channel was unexpectedly closed");
@@ -85,24 +89,36 @@ impl ThreadRunner {
                 }
             }
 
-            self.base.run_single().expect("error while running servers");
+            self.base
+                .run_single()
+                .await
+                .expect("error while running servers");
         }
     }
 }
 
 impl ThreadRunnerHandle {
-    pub fn new() -> Self {
+    pub fn new(id: RunnerId) -> Self {
         let (to_send, to_recv) = mpsc::unbounded_channel();
         let (from_send, from_recv) = mpsc::unbounded_channel();
         Self {
-            join_handle: async_thread::spawn(move || {
-                ThreadRunner {
-                    base: Runner::default(),
-                    sender: from_send,
-                    receiver: to_recv,
-                }
-                .run();
-            }),
+            join_handle: async_thread::Builder::new()
+                .name(format!("runner thread {id}"))
+                .spawn(move || {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .build()
+                        .expect("unable to create thread runtime");
+                    runtime.block_on(async {
+                        ThreadRunner {
+                            base: Runner::default(),
+                            sender: from_send,
+                            receiver: to_recv,
+                        }
+                        .run()
+                        .await
+                    });
+                })
+                .expect("failed to spawn thread"),
             sender: to_send,
             receiver: from_recv,
         }
@@ -115,9 +131,10 @@ impl ThreadRunnerHandle {
             .context("thread runner channel was unexpectedly closed")
     }
 
-    fn recv(&mut self) -> anyhow::Result<FromRunnerMsg> {
+    async fn recv(&mut self) -> anyhow::Result<FromRunnerMsg> {
         self.receiver
-            .blocking_recv()
+            .recv()
+            .await
             .ok_or_else(|| anyhow::format_err!("thread runner channel was unexpectedly closed"))
     }
 
@@ -134,18 +151,19 @@ impl ThreadRunnerHandle {
     }
 }
 
-impl Default for ThreadRunnerHandle {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+#[async_trait(?Send)]
 pub trait ServerMover {
-    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>>;
+    async fn take_server(
+        &mut self,
+        kind: ServerKind,
+    ) -> anyhow::Result<Option<Box<dyn SendGameServer>>>;
     fn emplace_server(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()>;
 
-    fn take_server_check(&mut self, kind: ServerKind) -> anyhow::Result<Box<dyn SendGameServer>> {
-        self.take_server(kind)?.ok_or_else(|| {
+    async fn take_server_check(
+        &mut self,
+        kind: ServerKind,
+    ) -> anyhow::Result<Box<dyn SendGameServer>> {
+        self.take_server(kind).await?.ok_or_else(|| {
             anyhow::format_err!(
                 "{} server not found in container",
                 match kind {
@@ -157,9 +175,13 @@ pub trait ServerMover {
         })
     }
 
-    fn emplace_server_check(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()> {
+    async fn emplace_server_check(
+        &mut self,
+        server: Box<dyn SendGameServer>,
+    ) -> anyhow::Result<()> {
         debug_assert!(
             self.take_server(server.server_kind())
+                .await
                 .context("checking for existing server, expected None, but an error occurred")?
                 .is_none(),
             "invalid state: server already existed before emplacement"
@@ -168,9 +190,13 @@ pub trait ServerMover {
     }
 }
 
+#[async_trait(?Send)]
 impl ServerMover for MainRunner {
-    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
-        self.base.container.take_server(kind)
+    async fn take_server(
+        &mut self,
+        kind: ServerKind,
+    ) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
+        self.base.container.take_server(kind).await
     }
 
     fn emplace_server(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()> {
@@ -178,13 +204,18 @@ impl ServerMover for MainRunner {
     }
 }
 
+#[async_trait(?Send)]
 impl ServerMover for ThreadRunnerHandle {
     #[allow(irrefutable_let_patterns)]
-    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
+    async fn take_server(
+        &mut self,
+        kind: ServerKind,
+    ) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
         self.send(ToRunnerMsg::RequestServer(kind))
             .context("unable to request server from runner thread")?;
         let message = self
             .recv()
+            .await
             .context("unable to receive server from runner thread")?;
         if let FromRunnerMsg::MoveServer(server) = message {
             Ok(server)

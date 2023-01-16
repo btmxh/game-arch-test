@@ -16,9 +16,9 @@ use crate::{
     events::GameUserEvent,
     exec::{
         executor::GameServerExecutor,
-        server::{draw, GameServerChannel},
+        server::{draw, GameServerSendChannel, ServerSendChannel},
     },
-    utils::{error::ResultExt, mpsc},
+    utils::error::ResultExt,
 };
 
 use super::GfxHandle;
@@ -80,7 +80,7 @@ impl<T: GLHandleTrait<A>, A: Clone> Clone for GLGfxHandle<T, A> {
 
 pub struct GLGfxHandleInner<T: GLHandleTrait<A> + 'static, A: Clone + 'static = ()> {
     pub handle: GfxHandle<GLHandle<T, A>>,
-    sender: mpsc::UnboundedSender<draw::RecvMsg>,
+    sender: ServerSendChannel<draw::RecvMsg>,
     _phantom: PhantomData<fn() -> A>,
 }
 
@@ -110,14 +110,13 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
     pub unsafe fn new_uninit(draw: &mut draw::ServerChannel) -> Self {
         Self(Arc::new(GLGfxHandleInner {
             handle: GfxHandle::new(draw),
-            sender: draw.sender().clone(),
+            sender: draw.clone_sender(),
             _phantom: PhantomData,
         }))
     }
 
     #[allow(unused_mut)]
     pub fn new_args(
-        executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
         args: A,
@@ -126,7 +125,7 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
         A: Send,
     {
         let slf = unsafe { Self::new_uninit(draw) };
-        executor.execute_draw_event(
+        GameServerExecutor::execute_draw_event(
             draw,
             enclose!((slf) move |server| {
                 if let Some(container) = T::get_container_mut(server) {
@@ -135,7 +134,7 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
                         .err()
                         .map(GameUserEvent::Error);
                 }
-                
+
                 None
             }),
         )?;
@@ -154,11 +153,10 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
 
 impl<T: GLHandleTrait<()> + 'static> GLGfxHandle<T> {
     pub fn new(
-        executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
     ) -> anyhow::Result<Self> {
-        Self::new_args(executor, draw, name, ())
+        Self::new_args(draw, name, ())
     }
 }
 

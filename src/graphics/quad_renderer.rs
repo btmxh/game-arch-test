@@ -4,7 +4,7 @@ use anyhow::Context;
 use gl::types::GLuint;
 use glsl_layout::vec2;
 
-use crate::exec::{executor::GameServerExecutor, server::draw};
+use crate::exec::server::draw;
 
 use super::wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle};
 
@@ -45,12 +45,10 @@ pub struct QuadRenderer {
 impl QuadRenderer {
     #[allow(unused_mut)]
     pub fn new(
-        executor: &mut GameServerExecutor,
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
     ) -> anyhow::Result<Self> {
         let program = ProgramHandle::new_vf(
-            executor,
             draw,
             "quad renderer shader program",
             shader::VERTEX,

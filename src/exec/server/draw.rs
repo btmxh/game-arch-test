@@ -12,6 +12,7 @@ use crate::{
 use std::{any::Any, ffi::CString, num::NonZeroU32};
 
 use anyhow::Context;
+use async_trait::async_trait;
 use glutin::{
     config::Config,
     context::{ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext},
@@ -21,7 +22,7 @@ use glutin::{
 };
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 
-use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
+use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
 
 pub type DrawCallback = dyn Fn(&Server) -> anyhow::Result<()> + Send;
@@ -36,7 +37,6 @@ type ExecuteCallback<R> = dyn FnOnce(&mut Server) -> R + Send;
 
 pub enum RecvMsg {
     SetFrequencyProfiling(bool),
-    Resize(PhysicalSize<NonZeroU32>),
     ExecuteSync(Box<ExecuteCallback<ExecuteSyncReturnType>>),
     ExecuteEvent(Box<ExecuteCallback<ExecuteEventReturnType>>),
 }
@@ -140,19 +140,21 @@ impl Server {
     }
 
     #[allow(clippy::redundant_closure_call)]
-    fn process_messages(&mut self) -> anyhow::Result<()> {
+    async fn process_messages(&mut self) -> anyhow::Result<()> {
         let messages = self
             .base
             .receiver
             .receive_all_pending(false)
+            .await
             .ok_or_else(|| anyhow::format_err!("thread runner channel was unexpectedly closed"))?;
-        let mut resize = None;
         for message in messages {
             match message {
-                RecvMsg::Resize(new_size) => resize = Some(new_size),
                 RecvMsg::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
                 RecvMsg::ExecuteSync(callback) => {
                     let result = callback(self);
+                    if let Some(a7) = result.downcast_ref::<anyhow::Result<u32>>() {
+                        tracing::info!("{:?}", a7);
+                    }
                     self.base.send(SendMsg::ExecuteSyncReturn(result)).context(
                         "unable to send ExecuteSyncReturn message for Sync return mechanism",
                     )?;
@@ -161,29 +163,31 @@ impl Server {
                     callback(self)
                         .into_iter()
                         .try_for_each(|evt| self.base.proxy.send_event(evt))
-                        .context("unable to send ExecuteReturnEvent event to event loop")?;
+                        .map_err(|e| anyhow::format_err!("{}", e))
+                        .context("unable to send event to event loop")?;
                 }
             }
         }
 
-        if let Some(new_size) = resize {
-            self.gl_surface
-                .resize(&self.gl_context, new_size.width, new_size.height);
-            unsafe {
-                gl::Viewport(
-                    0,
-                    0,
-                    new_size.width.get().try_into().unwrap(),
-                    new_size.height.get().try_into().unwrap(),
-                );
-            }
-            self.display_size = new_size;
-        }
-
         Ok(())
+    }
+
+    pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>) {
+        self.gl_surface
+            .resize(&self.gl_context, new_size.width, new_size.height);
+        unsafe {
+            gl::Viewport(
+                0,
+                0,
+                new_size.width.get().try_into().unwrap(),
+                new_size.height.get().try_into().unwrap(),
+            );
+        }
+        self.display_size = new_size;
     }
 }
 
+#[async_trait(?Send)]
 impl GameServer for Server {
     fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>> {
         let gl_context = self
@@ -203,9 +207,9 @@ impl GameServer for Server {
         }))
     }
 
-    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+    async fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
         self.base.run("Draw", runner_frequency);
-        self.process_messages()?;
+        self.process_messages().await?;
         unsafe {
             gl::ClearColor(0.0, 0.0, 0.2, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
@@ -264,19 +268,18 @@ pub struct ServerChannel {
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
-    fn sender(&self) -> &UnboundedSender<RecvMsg> {
-        &self.sender
-    }
     fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
         &mut self.receiver
     }
 }
 
-impl ServerChannel {
-    pub fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()> {
-        self.send(RecvMsg::Resize(size))
+impl GameServerSendChannel<RecvMsg> for ServerChannel {
+    fn sender(&self) -> &UnboundedSender<RecvMsg> {
+        &self.sender
     }
+}
 
+impl ServerChannel {
     pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
         self.send(RecvMsg::SetFrequencyProfiling(fp))
             .context("unable to send frequency profiling request")

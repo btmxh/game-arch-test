@@ -61,19 +61,17 @@ pub struct DefaultTextureFramebuffer {
 
 impl DefaultTextureFramebuffer {
     pub fn new(
-        executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>>,
     ) -> anyhow::Result<Self> {
         let name = name.into();
         let slf = Self {
             texture: TextureHandle::new_args(
-                executor,
                 draw,
                 format!("{name} texture attachment"),
                 TextureType::E2D,
             )?,
-            framebuffer: FramebufferHandle::new(executor, draw, name)?,
+            framebuffer: FramebufferHandle::new(draw, name)?,
             size: None,
         };
         Ok(slf)
@@ -141,7 +139,6 @@ impl DefaultTextureFramebuffer {
 
     pub fn resize(
         &mut self,
-        executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         new_size: PhysicalSize<u32>,
     ) -> anyhow::Result<()> {
@@ -151,7 +148,7 @@ impl DefaultTextureFramebuffer {
 
         let slf = self.clone();
         self.size = Some(new_size);
-        executor.execute_draw_event(draw, move |server| {
+        GameServerExecutor::execute_draw_event(draw, move |server| {
             slf.resize_in_server(server, new_size)
                 .err()
                 .map(GameUserEvent::Error)

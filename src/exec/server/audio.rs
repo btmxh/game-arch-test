@@ -1,4 +1,5 @@
 use anyhow::Context;
+use async_trait::async_trait;
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
     utils::mpsc::{UnboundedReceiver, UnboundedReceiverExt, UnboundedSender},
 };
 
-use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
+use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer, GameServerSendChannel};
 
 pub enum SendMsg {
     Dispatch(DispatchMsg),
@@ -26,21 +27,26 @@ pub struct ServerChannel {
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
-    fn sender(&self) -> &UnboundedSender<RecvMsg> {
-        &self.sender
-    }
     fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
         &mut self.receiver
     }
 }
 
+impl GameServerSendChannel<RecvMsg> for ServerChannel {
+    fn sender(&self) -> &UnboundedSender<RecvMsg> {
+        &self.sender
+    }
+}
+
+#[async_trait(?Send)]
 impl GameServer for Server {
-    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+    async fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
         self.base.run("Audio", runner_frequency);
         let messages = self
             .base
             .receiver
             .receive_all_pending(false)
+            .await
             .context("thread runner channel was unexpectedly closed")?;
         for message in messages {
             match message {

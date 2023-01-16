@@ -10,6 +10,7 @@ anyhow = "1.0.68"
 async-thread = "0.1.2"
 async-trait = "0.1.60"
 clap = { version = "4.0.32", features = ["derive"] }
+derivative = "2.2.0"
 fern = { version = "0.6.1", features = ["colored"] }
 futures = "0.3.25"
 gl = "0.14.0"
@@ -20,7 +21,7 @@ image = "0.24.5"
 rand = "0.8.5"
 raw-window-handle = "0.5.0"
 sendable = "0.6.1"
-tokio = { version = "1.23.0", features = ["sync"] }
+tokio = { version = "1.23.0", features = ["sync", "macros", "rt-multi-thread", "rt"] }
 tracing = "0.1.37"
 tracing-appender = "0.2.2"
 tracing-log = "0.1.3"

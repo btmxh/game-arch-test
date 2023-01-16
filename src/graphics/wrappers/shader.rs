@@ -9,8 +9,9 @@ use gl::types::{GLchar, GLenum, GLuint};
 
 use crate::{
     enclose,
+    events::GameUserEvent,
     exec::{executor::GameServerExecutor, server::draw},
-    graphics::GfxHandle, events::GameUserEvent,
+    graphics::GfxHandle,
 };
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
@@ -157,22 +158,20 @@ impl Program {
 impl ProgramHandle {
     #[allow(unused_mut)]
     pub fn new_vf(
-        executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
         vertex: &'static str,
         fragment: &'static str,
     ) -> anyhow::Result<Self> {
         let handle = unsafe { Self::new_uninit(draw) };
-        executor
-            .execute_draw_event(
-                draw,
-                enclose!((handle) move |server| {
-                    server.handles.create_vf_program(name, &handle, vertex, fragment)
-                        .err()
-                        .map(GameUserEvent::Error)
-                }),
-            )?;
+        GameServerExecutor::execute_draw_event(
+            draw,
+            enclose!((handle) move |server| {
+                server.handles.create_vf_program(name, &handle, vertex, fragment)
+                    .err()
+                    .map(GameUserEvent::Error)
+            }),
+        )?;
         Ok(handle)
     }
 }

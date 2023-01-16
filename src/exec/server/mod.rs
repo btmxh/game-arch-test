@@ -28,10 +28,8 @@ pub struct BaseGameServer<SendMsg, RecvMsg> {
     pub timer: f64,
 }
 
-#[async_trait(?Send)]
-pub trait GameServerChannel<SendMsg, RecvMsg> {
+pub trait GameServerSendChannel<RecvMsg> {
     fn sender(&self) -> &UnboundedSender<RecvMsg>;
-    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg>;
     fn send(&self, message: RecvMsg) -> anyhow::Result<()> {
         self.sender()
             .send(message)
@@ -41,10 +39,27 @@ pub trait GameServerChannel<SendMsg, RecvMsg> {
             )
     }
 
+    fn clone_sender(&self) -> ServerSendChannel<RecvMsg> {
+        ServerSendChannel(self.sender().clone())
+    }
+}
+
+#[async_trait(?Send)]
+pub trait GameServerChannel<SendMsg, RecvMsg>: GameServerSendChannel<RecvMsg> {
+    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg>;
+
     async fn recv(&mut self) -> anyhow::Result<SendMsg> {
         self.receiver().recv().await.ok_or_else(|| {
             anyhow::format_err!("unable to receive message from (local) game server (the server was probably closed)")
         })
+    }
+}
+
+pub struct ServerSendChannel<RecvMsg>(UnboundedSender<RecvMsg>);
+
+impl<RecvMsg> GameServerSendChannel<RecvMsg> for ServerSendChannel<RecvMsg> {
+    fn sender(&self) -> &UnboundedSender<RecvMsg> {
+        &self.0
     }
 }
 
@@ -70,8 +85,9 @@ pub enum ServerKind {
     Update,
 }
 
+#[async_trait(?Send)]
 pub trait GameServer {
-    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()>;
+    async fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()>;
     fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>>;
 }
 pub trait SendGameServer: Send {

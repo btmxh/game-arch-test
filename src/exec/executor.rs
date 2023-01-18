@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context};
 use futures::{executor::block_on, Future};
-use tokio::task::JoinHandle;
 use tracing_appender::non_blocking::WorkerGuard;
 use winit::{
     event::Event,
@@ -20,13 +19,14 @@ use super::{
     server::{
         audio, draw, update, GameServerChannel, GameServerSendChannel, SendGameServer, ServerKind,
     },
+    task::{TaskExecutor, TaskHandle},
     NUM_GAME_LOOPS,
 };
 
 pub struct GameServerExecutor {
     main_runner: MainRunner,
     thread_runners: [Option<ThreadRunnerHandle>; NUM_GAME_LOOPS],
-    task_handles: Vec<JoinHandle<()>>,
+    task_executor: TaskExecutor,
 }
 
 impl GameServerExecutor {
@@ -108,7 +108,7 @@ impl GameServerExecutor {
                     ..Default::default()
                 },
             },
-            task_handles: Vec::new(),
+            task_executor: TaskExecutor::new(),
         })
     }
 
@@ -218,25 +218,14 @@ impl GameServerExecutor {
         })))
     }
 
-    pub fn add_join_handle(&mut self, handle: JoinHandle<()>) {
-        self.task_handles.push(handle)
-    }
-
-    pub fn execute_task<F>(&mut self, f: F)
-    where
-        F: Future<Output = ()> + Send + 'static,
-    {
-        self.add_join_handle(tokio::spawn(f))
-    }
-
-    pub fn execute_blocking_task<F>(&mut self, f: F)
+    pub fn execute_blocking_task<F>(&mut self, f: F) -> TaskHandle
     where
         F: FnOnce() -> anyhow::Result<()> + Send + 'static,
     {
-        self.add_join_handle(tokio::task::spawn_blocking(move || {
+        self.task_executor.execute(move || {
             if let Err(e) = f() {
                 tracing::error!("error while running blocking task: {}", e);
             }
-        }))
+        })
     }
 }

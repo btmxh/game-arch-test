@@ -1,11 +1,8 @@
 use async_thread::JoinHandle;
 
-use anyhow::{bail, Context};
-use async_trait::async_trait;
-
 use crate::utils::{
     clock::SteadyClock,
-    mpsc::{self, UnboundedReceiverExt},
+    mpsc,
     sync::{ClockSync, OFClockSync},
 };
 
@@ -42,14 +39,14 @@ impl Runner {
 
 pub struct ThreadRunner {
     base: Runner,
-    sender: mpsc::UnboundedSender<FromRunnerMsg>,
-    receiver: mpsc::UnboundedReceiver<ToRunnerMsg>,
+    sender: mpsc::Sender<FromRunnerMsg>,
+    receiver: mpsc::Receiver<ToRunnerMsg>,
 }
 
 pub struct ThreadRunnerHandle {
     join_handle: JoinHandle<()>,
-    sender: mpsc::UnboundedSender<ToRunnerMsg>,
-    receiver: mpsc::UnboundedReceiver<FromRunnerMsg>,
+    sender: mpsc::Sender<ToRunnerMsg>,
+    receiver: mpsc::Receiver<FromRunnerMsg>,
 }
 
 impl ThreadRunner {
@@ -61,6 +58,7 @@ impl ThreadRunner {
 
     pub async fn run(mut self) {
         loop {
+            
             let pending_msgs = self
                 .receiver
                 .receive_all_pending(self.base.container.is_empty())

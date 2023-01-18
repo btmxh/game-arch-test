@@ -8,7 +8,7 @@ use crate::{
     utils::mpsc::{UnboundedReceiver, UnboundedReceiverExt, UnboundedSender},
 };
 
-use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer, GameServerSendChannel};
+use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 
 pub enum SendMsg {
     Dispatch(DispatchMsg),
@@ -38,9 +38,8 @@ impl GameServerSendChannel<RecvMsg> for ServerChannel {
     }
 }
 
-#[async_trait(?Send)]
 impl GameServer for Server {
-    async fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
         self.base.run("Audio", runner_frequency);
         let messages = self
             .base

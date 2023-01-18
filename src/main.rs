@@ -1,4 +1,3 @@
-use anyhow::Context;
 use display::Display;
 use events::GameUserEvent;
 use exec::{
@@ -25,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn main_async() -> anyhow::Result<()> {
+fn main_async() -> anyhow::Result<()> {
     parse_args();
     let guard = init_log()?;
     let event_loop = EventLoopBuilder::<GameUserEvent>::with_user_event().build();

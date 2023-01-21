@@ -1,5 +1,3 @@
-use async_trait::async_trait;
-
 use crate::exec::server::{audio, draw, update, GameServer, SendGameServer, ServerKind};
 
 use super::ServerMover;
@@ -11,9 +9,8 @@ pub struct ServerContainer {
     pub update: Option<update::Server>,
 }
 
-#[async_trait(?Send)]
 impl ServerMover for ServerContainer {
-    async fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
+    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
         match kind {
             ServerKind::Audio => self.audio.take().map(|s| s.to_send()).transpose(),
             ServerKind::Draw => self.draw.take().map(|s| s.to_send()).transpose(),
@@ -32,15 +29,15 @@ impl ServerMover for ServerContainer {
 }
 
 impl ServerContainer {
-    pub async fn run_single(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+    pub fn run_single(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
         if let Some(server) = self.audio.as_mut() {
-            server.run(runner_frequency).await?;
+            server.run(runner_frequency)?;
         }
         if let Some(server) = self.draw.as_mut() {
-            server.run(runner_frequency).await?;
+            server.run(runner_frequency)?;
         }
         if let Some(server) = self.update.as_mut() {
-            server.run(runner_frequency).await?;
+            server.run(runner_frequency)?;
         }
         Ok(())
     }

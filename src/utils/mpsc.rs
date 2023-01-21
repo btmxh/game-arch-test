@@ -1,30 +1,56 @@
-use async_trait::async_trait;
-pub use tokio::sync::mpsc::{
-    error::{SendError, TryRecvError},
-    unbounded_channel, UnboundedReceiver, UnboundedSender,
-};
+use std::time::Duration;
 
-#[async_trait(?Send)]
-pub trait UnboundedReceiverExt<T> {
-    async fn receive_all_pending(&mut self, block: bool) -> Option<Vec<T>>;
-}
+use flume::TryRecvError;
 
-#[async_trait(?Send)]
-impl<T> UnboundedReceiverExt<T> for UnboundedReceiver<T> {
-    async fn receive_all_pending(&mut self, block: bool) -> Option<Vec<T>> {
-        let mut pending_messages = Vec::new();
-        if block {
-            match self.recv().await {
-                Some(msg) => pending_messages.push(msg),
-                None => return None,
-            }
-        }
-        loop {
-            match self.try_recv() {
-                Ok(msg) => pending_messages.push(msg),
-                Err(TryRecvError::Disconnected) => return None,
-                Err(TryRecvError::Empty) => return Some(pending_messages),
-            }
+pub struct Receiver<T>(flume::Receiver<T>);
+pub struct Sender<T>(flume::Sender<T>);
+
+impl<T> Receiver<T> {
+    pub fn recv(&self) -> anyhow::Result<T> {
+        Ok(self.0.recv()?)
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> anyhow::Result<Option<T>> {
+        match self.0.recv_timeout(timeout) {
+            Err(flume::RecvTimeoutError::Timeout) => Ok(None),
+            r => Ok(r.map(Some)?),
         }
     }
+
+    pub fn try_recv(&self) -> anyhow::Result<Option<T>> {
+        match self.0.try_recv() {
+            Err(TryRecvError::Empty) => Ok(None),
+            r => Ok(r.map(Some)?),
+        }
+    }
+
+    pub fn try_iter(
+        &self,
+        block_timeout: Option<Duration>,
+    ) -> anyhow::Result<impl Iterator<Item = T> + '_> {
+        let first = match block_timeout {
+            Some(timeout) => self.recv_timeout(timeout)?,
+            None => None,
+        };
+        Ok(first.into_iter().chain(self.0.iter()))
+    }
+}
+
+impl<T> Sender<T> {
+    pub fn send(&self, msg: T) -> anyhow::Result<()> {
+        self.0
+            .send(msg)
+            .map_err(|_| anyhow::Error::msg("mpsc::SendError(...)"))
+    }
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+pub fn channels<T>() -> (Sender<T>, Receiver<T>) {
+    let (sender, receiver) = flume::unbounded();
+    (Sender(sender), Receiver(receiver))
 }

@@ -18,14 +18,6 @@ pub mod graphics;
 pub mod utils;
 
 fn main() -> anyhow::Result<()> {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    rt.block_on(async { main_async().await })?;
-    Ok(())
-}
-
-async fn main_async() -> anyhow::Result<()> {
     parse_args();
     let guard = init_log()?;
     let event_loop = EventLoopBuilder::<GameUserEvent>::with_user_event().build();
@@ -37,7 +29,7 @@ async fn main_async() -> anyhow::Result<()> {
             .context("unable to initialize draw server")?;
     let (audio, audio_channels) = audio::Server::new(event_loop.create_proxy());
     let (update, update_channels) = update::Server::new(event_loop.create_proxy());
-    let mut executor = GameServerExecutor::new(audio, draw, update).await?;
+    let mut executor = GameServerExecutor::new(audio, draw, update)?;
     let event_loop_proxy = event_loop.create_proxy();
     let channels = ServerChannels {
         audio: audio_channels,
@@ -47,13 +39,13 @@ async fn main_async() -> anyhow::Result<()> {
     let dispatch_list = DispatchList::new();
     executor
         .move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)
-        .await?;
+        ?;
     executor
         .move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)
-        .await?;
+        ?;
     executor
         .move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)
-        .await?;
+        ?;
     executor.set_frequency(0, 1000.0)?;
     let main_ctx = MainContext::new(
         &mut executor,

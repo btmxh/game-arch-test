@@ -93,12 +93,15 @@ impl MainContext {
 
         let channel = channels.draw.clone_sender();
         let node_handle = channels.draw.generate_id();
-        executor.execute_blocking_task(enclose!((test_texture) move || {
+        executor.execute_blocking_task(enclose!((test_texture) move |token| {
             let img = image::io::Reader::open("BG.jpg")
                 .context("unable to load test texture")?
                 .decode()
                 .context("unable to decode test texture")?
                 .into_rgba8();
+            if token.is_cancelled() {
+                return Ok(())
+            }
             let width = img.width();
             let height = img.height();
 
@@ -179,7 +182,7 @@ impl MainContext {
     }
 
     #[allow(clippy::blocks_in_if_conditions)]
-    pub async fn handle_event(
+    pub fn handle_event(
         &mut self,
         executor: &mut GameServerExecutor,
         event: GameEvent<'_>,
@@ -212,7 +215,7 @@ impl MainContext {
                             tracing::info!("{:?}", dbg);
                             Ok(dbg)
                         })
-                        .await?;
+                        ?;
                     tracing::info!("{:?}", dbg);
                     self.update_blur_texture(32.0)?;
                 }
@@ -237,7 +240,7 @@ impl MainContext {
                             tracing::info!("{}", i);
                             Ok(())
                         })
-                        .await?;
+                        ?;
                 }
                 self.frequency_profiling = !self.frequency_profiling;
                 self.channels
@@ -275,7 +278,7 @@ impl MainContext {
                         s.set_swap_interval(interval)?;
                         Ok(Box::new(()))
                     })
-                    .await
+                    
                     .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
                     .log_warn()
                     .is_some()

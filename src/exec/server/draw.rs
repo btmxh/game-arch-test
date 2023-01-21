@@ -6,13 +6,12 @@ use crate::{
     },
     utils::{
         error::ResultExt,
-        mpsc::{UnboundedReceiver, UnboundedSender},
+        mpsc::{Receiver, Sender},
     },
 };
 use std::{any::Any, ffi::CString, num::NonZeroU32};
 
 use anyhow::Context;
-use async_trait::async_trait;
 use glutin::{
     config::Config,
     context::{ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext},
@@ -23,7 +22,7 @@ use glutin::{
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 
 use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
-use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
+use crate::display::SendRawHandle;
 
 pub type DrawCallback = dyn Fn(&Server) -> anyhow::Result<()> + Send;
 
@@ -140,13 +139,13 @@ impl Server {
     }
 
     #[allow(clippy::redundant_closure_call)]
-    async fn process_messages(&mut self) -> anyhow::Result<()> {
+    fn process_messages(&mut self) -> anyhow::Result<()> {
         let messages = self
             .base
             .receiver
-            .receive_all_pending(false)
-            .await
-            .ok_or_else(|| anyhow::format_err!("thread runner channel was unexpectedly closed"))?;
+            .try_iter(None)
+            .context("thread runner channel was unexpectedly closed")?
+            .collect::<Vec<_>>();
         for message in messages {
             match message {
                 RecvMsg::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
@@ -187,7 +186,6 @@ impl Server {
     }
 }
 
-#[async_trait(?Send)]
 impl GameServer for Server {
     fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>> {
         let gl_context = self
@@ -207,9 +205,9 @@ impl GameServer for Server {
         }))
     }
 
-    async fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
         self.base.run("Draw", runner_frequency);
-        self.process_messages().await?;
+        self.process_messages()?;
         unsafe {
             gl::ClearColor(0.0, 0.0, 0.2, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
@@ -262,19 +260,19 @@ impl SendGameServer for SendServer {
 }
 
 pub struct ServerChannel {
-    sender: UnboundedSender<RecvMsg>,
-    receiver: UnboundedReceiver<SendMsg>,
+    sender: Sender<RecvMsg>,
+    receiver: Receiver<SendMsg>,
     current_id: u64,
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
-    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
+    fn receiver(&mut self) -> &mut Receiver<SendMsg> {
         &mut self.receiver
     }
 }
 
 impl GameServerSendChannel<RecvMsg> for ServerChannel {
-    fn sender(&self) -> &UnboundedSender<RecvMsg> {
+    fn sender(&self) -> &Sender<RecvMsg> {
         &self.sender
     }
 }

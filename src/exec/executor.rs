@@ -1,8 +1,6 @@
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context};
-use futures::{executor::block_on, Future};
-use tokio::task::JoinHandle;
 use tracing_appender::non_blocking::WorkerGuard;
 use winit::{
     event::Event,
@@ -20,50 +18,45 @@ use super::{
     server::{
         audio, draw, update, GameServerChannel, GameServerSendChannel, SendGameServer, ServerKind,
     },
+    task::{CancellationToken, TaskExecutor, TaskHandle},
     NUM_GAME_LOOPS,
 };
 
 pub struct GameServerExecutor {
     main_runner: MainRunner,
     thread_runners: [Option<ThreadRunnerHandle>; NUM_GAME_LOOPS],
-    task_handles: Vec<JoinHandle<()>>,
+    task_executor: TaskExecutor,
 }
 
 impl GameServerExecutor {
-    async fn move_server_from(
+    fn move_server_from(
         &mut self,
         from: RunnerId,
         kind: ServerKind,
     ) -> anyhow::Result<Box<dyn SendGameServer>> {
         match from {
-            MAIN_RUNNER_ID => self.main_runner.take_server_check(kind).await,
-            _ => {
-                self.thread_runners[usize::from(from)]
-                    .as_mut()
-                    .ok_or_else(|| anyhow::format_err!("runner {} hasn't been constructed", from))?
-                    .take_server_check(kind)
-                    .await
-            }
+            MAIN_RUNNER_ID => self.main_runner.take_server_check(kind),
+            _ => self.thread_runners[usize::from(from)]
+                .as_mut()
+                .ok_or_else(|| anyhow::format_err!("runner {} hasn't been constructed", from))?
+                .take_server_check(kind),
         }
     }
 
-    async fn move_server_to(
+    fn move_server_to(
         &mut self,
         to: RunnerId,
         server: Box<dyn SendGameServer>,
     ) -> anyhow::Result<()> {
         match to {
-            MAIN_RUNNER_ID => self.main_runner.emplace_server_check(server).await,
-            _ => {
-                self.thread_runners[usize::from(to)]
-                    .get_or_insert_with(|| ThreadRunnerHandle::new(to))
-                    .emplace_server_check(server)
-                    .await
-            }
+            MAIN_RUNNER_ID => self.main_runner.emplace_server_check(server),
+            _ => self.thread_runners[usize::from(to)]
+                .get_or_insert_with(|| ThreadRunnerHandle::new(to))
+                .emplace_server_check(server),
         }
     }
 
-    pub async fn move_server(
+    pub fn move_server(
         &mut self,
         from: RunnerId,
         to: RunnerId,
@@ -71,10 +64,8 @@ impl GameServerExecutor {
     ) -> anyhow::Result<()> {
         let server = self
             .move_server_from(from, kind)
-            .await
             .with_context(|| format!("unable to move {:?} server from runner id {}", kind, from))?;
         self.move_server_to(to, server)
-            .await
             .with_context(|| format!("unable to move {:?} server to runner id {}", kind, to))
     }
 
@@ -89,7 +80,7 @@ impl GameServerExecutor {
         Ok(())
     }
 
-    pub async fn new(
+    pub fn new(
         audio: audio::Server,
         draw: draw::SendServer,
         update: update::Server,
@@ -99,7 +90,7 @@ impl GameServerExecutor {
             draw: None,
             update: Some(update),
         };
-        container.emplace_server_check(Box::new(draw)).await?;
+        container.emplace_server_check(Box::new(draw))?;
         Ok(Self {
             thread_runners: Default::default(),
             main_runner: MainRunner {
@@ -108,18 +99,18 @@ impl GameServerExecutor {
                     ..Default::default()
                 },
             },
-            task_handles: Vec::new(),
+            task_executor: TaskExecutor::new(),
         })
     }
 
-    pub async fn stop(&mut self) {
+    pub fn stop(&mut self) {
         for runner in self.thread_runners.iter_mut() {
             if let Some(runner) = runner.take() {
                 runner
                     .stop()
                     .context("error stopping runner thread")
                     .log_error();
-                if runner.join().await {
+                if runner.join() {
                     tracing::error!("runner thread panicked");
                 }
             }
@@ -138,43 +129,39 @@ impl GameServerExecutor {
             unused(&guard);
             unused(&main_ctx);
             unused(&self);
-            block_on(async {
-                match event {
-                    Event::MainEventsCleared => {
-                        self.main_runner
-                            .base
-                            .run_single()
-                            .await
-                            .expect("error running main runner");
-                    }
-
-                    Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
-
-                    event => main_ctx
-                        .handle_event(&mut self, event)
-                        .await
-                        .expect("error handling events"),
+            match event {
+                Event::MainEventsCleared => {
+                    self.main_runner
+                        .base
+                        .run_single()
+                        .expect("error running main runner");
                 }
 
-                match *control_flow {
-                    ControlFlow::ExitWithCode(_) => {
-                        self.stop().await;
-                    }
+                Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
 
-                    _ => {
-                        *control_flow = if self.main_runner.base.container.is_empty() {
-                            ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
-                        } else {
-                            ControlFlow::Poll
-                        }
+                event => main_ctx
+                    .handle_event(&mut self, event)
+                    .expect("error handling events"),
+            }
+
+            match *control_flow {
+                ControlFlow::ExitWithCode(_) => {
+                    self.stop();
+                }
+
+                _ => {
+                    *control_flow = if self.main_runner.base.container.is_empty() {
+                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
+                    } else {
+                        ControlFlow::Poll
                     }
-                };
-            })
+                }
+            };
         })
     }
 
     #[allow(irrefutable_let_patterns)]
-    pub async fn execute_draw_sync<F, R>(
+    pub fn execute_draw_sync<F, R>(
         &mut self,
         channel: &mut draw::ServerChannel,
         callback: F,
@@ -190,9 +177,7 @@ impl GameServerExecutor {
             channel.send(draw::RecvMsg::ExecuteSync(Box::new(move |server| {
                 Box::new(callback(server))
             })))?;
-            let msg = channel.receiver().recv().await.unwrap();
-            // if let draw::SendMsg::ExecuteSyncReturn(result) = channel.recv().await? {
-            if let draw::SendMsg::ExecuteSyncReturn(result) = msg {
+            if let draw::SendMsg::ExecuteSyncReturn(result) = channel.recv()? {
                 Ok(result
                     .downcast::<anyhow::Result<R>>()
                     .map(|bx| *bx)
@@ -218,25 +203,14 @@ impl GameServerExecutor {
         })))
     }
 
-    pub fn add_join_handle(&mut self, handle: JoinHandle<()>) {
-        self.task_handles.push(handle)
-    }
-
-    pub fn execute_task<F>(&mut self, f: F)
+    pub fn execute_blocking_task<F>(&mut self, f: F) -> TaskHandle
     where
-        F: Future<Output = ()> + Send + 'static,
+        F: FnOnce(CancellationToken) -> anyhow::Result<()> + Send + 'static,
     {
-        self.add_join_handle(tokio::spawn(f))
-    }
-
-    pub fn execute_blocking_task<F>(&mut self, f: F)
-    where
-        F: FnOnce() -> anyhow::Result<()> + Send + 'static,
-    {
-        self.add_join_handle(tokio::task::spawn_blocking(move || {
-            if let Err(e) = f() {
+        self.task_executor.execute(move |token| {
+            if let Err(e) = f(token) {
                 tracing::error!("error while running blocking task: {}", e);
             }
-        }))
+        })
     }
 }

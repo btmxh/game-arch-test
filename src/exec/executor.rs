@@ -170,7 +170,6 @@ impl GameServerExecutor {
         R: Send + 'static,
         F: FnOnce(&mut draw::Server) -> anyhow::Result<R> + Send + 'static,
     {
-        tracing::info!("a7");
         if let Some(server) = self.main_runner.base.container.draw.as_mut() {
             callback(server)
         } else {

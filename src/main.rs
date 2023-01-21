@@ -2,7 +2,6 @@ use anyhow::Context;
 use display::Display;
 use events::GameUserEvent;
 use exec::{
-    dispatch::DispatchList,
     executor::GameServerExecutor,
     main_ctx::MainContext,
     runner::MAIN_RUNNER_ID,
@@ -36,23 +35,10 @@ fn main() -> anyhow::Result<()> {
         draw: draw_channels,
         update: update_channels,
     };
-    let dispatch_list = DispatchList::new();
-    executor
-        .move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)
-        ?;
-    executor
-        .move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)
-        ?;
-    executor
-        .move_server(MAIN_RUNNER_ID, 1, exec::server::ServerKind::Draw)
-        ?;
+    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Audio)?;
+    executor.move_server(MAIN_RUNNER_ID, 0, ServerKind::Update)?;
+    executor.move_server(MAIN_RUNNER_ID, 1, ServerKind::Draw)?;
     executor.set_frequency(0, 1000.0)?;
-    let main_ctx = MainContext::new(
-        &mut executor,
-        display,
-        event_loop_proxy,
-        dispatch_list,
-        channels,
-    )?;
+    let main_ctx = MainContext::new(&mut executor, display, event_loop_proxy, channels)?;
     executor.run(event_loop, main_ctx, guard);
 }

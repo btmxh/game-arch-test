@@ -21,13 +21,14 @@ use crate::{
             vertex_array::VertexArrayHandle,
         },
     },
-    utils::{clock::debug_get_time, debug_handle::DebugHandle, enclose::enclose, error::ResultExt},
+    utils::{clock::debug_get_time, enclose::enclose, error::ResultExt},
 };
 
 use super::{
     dispatch::{DispatchId, DispatchList},
     executor::GameServerExecutor,
     server::{GameServerSendChannel, ServerChannels},
+    task::CancellationToken,
 };
 
 pub struct MainContext {
@@ -42,6 +43,10 @@ pub struct MainContext {
     pub dispatch_list: DispatchList,
     pub event_loop_proxy: EventLoopProxy<GameUserEvent>,
     pub display: Display,
+    // resize throttling
+    // port of https://blog.webdevsimplified.com/2022-03/debounce-vs-throttle/
+    resize_should_wait: bool,
+    resize_size: Option<PhysicalSize<NonZeroU32>>,
 }
 
 impl MainContext {
@@ -49,7 +54,6 @@ impl MainContext {
         executor: &mut GameServerExecutor,
         display: Display,
         event_loop_proxy: EventLoopProxy<GameUserEvent>,
-        dispatch_list: DispatchList,
         mut channels: ServerChannels,
     ) -> anyhow::Result<Self> {
         let dummy_vao = VertexArrayHandle::new(&mut channels.draw, "dummy vertex array")?;
@@ -73,12 +77,27 @@ impl MainContext {
             test_texture,
             display,
             event_loop_proxy,
-            dispatch_list,
+            dispatch_list: DispatchList::new(),
             channels,
             vsync: true,
             frequency_profiling: false,
             screen_framebuffer,
+            resize_should_wait: false,
+            resize_size: None,
         })
+    }
+
+    fn resize(
+        &mut self,
+        executor: &mut GameServerExecutor,
+        size: PhysicalSize<NonZeroU32>,
+    ) -> anyhow::Result<()> {
+        executor.execute_draw_sync(&mut self.channels.draw, move |server| {
+            server.resize(size);
+            Ok(())
+        })?;
+        self.update_blur_texture(32.0)?;
+        Ok(())
     }
 
     #[allow(unused_mut)]
@@ -202,22 +221,39 @@ impl MainContext {
                 window_id,
                 event: WindowEvent::Resized(size),
             } if self.display.get_window_id() == window_id => {
+                const THROTTLE_DURATION: Duration = Duration::from_millis(100);
+                fn resize_timeout_func(
+                    slf: &mut MainContext,
+                    executor: &mut GameServerExecutor,
+                ) -> anyhow::Result<()> {
+                    if let Some(size) = slf.resize_size.take() {
+                        slf.resize(executor, size)?;
+                        slf.resize_size = None;
+                        slf.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
+                            resize_timeout_func(slf, executor)
+                        })?;
+                    } else {
+                        slf.resize_should_wait = false;
+                    }
+
+                    Ok(())
+                }
+
                 let width = NonZeroU32::new(size.width);
                 let height = NonZeroU32::new(size.height);
                 let size =
                     width.and_then(|width| height.map(|height| PhysicalSize::new(width, height)));
-                let dbg = DebugHandle::new(true);
                 if let Some(size) = size {
-                    tracing::info!("{:?}", dbg);
-                    let dbg = executor
-                        .execute_draw_sync(&mut self.channels.draw, move |server| {
-                            server.resize(size);
-                            tracing::info!("{:?}", dbg);
-                            Ok(dbg)
-                        })
-                        ?;
-                    tracing::info!("{:?}", dbg);
-                    self.update_blur_texture(32.0)?;
+                    // throttle
+                    if self.resize_should_wait {
+                        self.resize_size = Some(size);
+                    } else {
+                        self.resize(executor, size)?;
+                        self.resize_should_wait = true;
+                        self.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
+                            resize_timeout_func(slf, executor)
+                        })?;
+                    }
                 }
             }
 
@@ -234,14 +270,6 @@ impl MainContext {
                         ..
                     },
             } if self.display.get_window_id() == window_id => {
-                for i in 0..10000 {
-                    executor
-                        .execute_draw_sync(&mut self.channels.draw, move |_| {
-                            tracing::info!("{}", i);
-                            Ok(())
-                        })
-                        ?;
-                }
                 self.frequency_profiling = !self.frequency_profiling;
                 self.channels
                     .update
@@ -278,7 +306,6 @@ impl MainContext {
                         s.set_swap_interval(interval)?;
                         Ok(Box::new(()))
                     })
-                    
                     .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
                     .log_warn()
                     .is_some()
@@ -307,18 +334,16 @@ impl MainContext {
                 let time = debug_get_time();
                 let test_duration = 5.0;
                 tracing::info!("{}", time);
-                self.set_timeout(Duration::from_secs_f64(test_duration), move |_, _| {
+                self.set_timeout(Duration::from_secs_f64(test_duration), move |_, _, _| {
                     tracing::info!("delay: {}s", debug_get_time() - time - test_duration);
+                    Ok(())
                 })?;
             }
 
             Event::UserEvent(GameUserEvent::Dispatch(msg)) => {
-                self.dispatch_list
-                    .handle_dispatch_msg(msg)
-                    .into_iter()
-                    .for_each(|(id, d)| {
-                        d(self, id);
-                    });
+                for (id, d) in self.dispatch_list.handle_dispatch_msg(msg).into_iter() {
+                    d(self, executor, id)?;
+                }
             }
 
             Event::UserEvent(GameUserEvent::Execute(callback)) => {
@@ -334,12 +359,18 @@ impl MainContext {
         Ok(())
     }
 
-    pub fn set_timeout<F>(&mut self, timeout: Duration, callback: F) -> anyhow::Result<DispatchId>
+    pub fn set_timeout<F>(
+        &mut self,
+        timeout: Duration,
+        callback: F,
+    ) -> anyhow::Result<(DispatchId, CancellationToken)>
     where
-        F: FnOnce(&mut MainContext, DispatchId) + 'static,
+        F: FnOnce(&mut MainContext, &mut GameServerExecutor, DispatchId) -> anyhow::Result<()>
+            + 'static,
     {
-        let id = self.dispatch_list.push(callback);
+        let cancel_token = CancellationToken::new();
+        let id = self.dispatch_list.push(callback, cancel_token.clone());
         self.channels.update.set_timeout(timeout, id)?;
-        Ok(id)
+        Ok((id, cancel_token))
     }
 }

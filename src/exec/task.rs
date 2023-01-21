@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    mem::ManuallyDrop,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use crate::{
@@ -14,7 +17,7 @@ use executors::{
     Executor,
 };
 
-pub struct TaskExecutor(ThreadPool<StaticParker<SmallThreadData>>);
+pub struct TaskExecutor(ManuallyDrop<ThreadPool<StaticParker<SmallThreadData>>>);
 
 #[derive(Clone)]
 pub struct CancellationToken(Arc<AtomicBool>);
@@ -26,6 +29,15 @@ impl Drop for DropTaskHandle {
     fn drop(&mut self) {
         self.0 .0.cancel();
         self.0 .1.join().log_error();
+    }
+}
+
+impl Drop for TaskExecutor {
+    fn drop(&mut self) {
+        unsafe { ManuallyDrop::take(&mut self.0) }
+            .shutdown()
+            .map_err(|e| anyhow::format_err!("error shutdown TaskExecutor: {e}"))
+            .log_error();
     }
 }
 
@@ -68,7 +80,7 @@ impl FinishToken {
 
 impl TaskExecutor {
     pub fn new() -> Self {
-        Self(small_pool(4))
+        Self(ManuallyDrop::new(small_pool(4)))
     }
 
     #[allow(unused_mut)]

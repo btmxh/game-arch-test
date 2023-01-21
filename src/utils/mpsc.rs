@@ -32,7 +32,7 @@ impl<T> Receiver<T> {
             Some(timeout) => self.recv_timeout(timeout)?,
             None => None,
         };
-        Ok(first.into_iter().chain(self.0.iter()))
+        Ok(first.into_iter().chain(self.0.try_iter()))
     }
 }
 

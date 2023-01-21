@@ -1,37 +1,31 @@
-use std::{
-    any::Any,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context};
-use futures::executor::block_on;
 use tracing_appender::non_blocking::WorkerGuard;
 use winit::{
     event::Event,
-    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoop},
 };
 
 use crate::{events::GameUserEvent, utils::error::ResultExt};
 
 use super::{
-    dispatch::ReturnMechanism,
     main_ctx::MainContext,
     runner::{
         container::ServerContainer, MainRunner, Runner, RunnerId, ServerMover, ThreadRunnerHandle,
         MAIN_RUNNER_ID,
     },
     server::{
-        audio,
-        draw::{self, ExecuteCallbackReturnType},
-        update, GameServerChannel, SendGameServer, ServerKind,
+        audio, draw, update, GameServerChannel, GameServerSendChannel, SendGameServer, ServerKind,
     },
+    task::{CancellationToken, TaskExecutor, TaskHandle},
     NUM_GAME_LOOPS,
 };
 
 pub struct GameServerExecutor {
     main_runner: MainRunner,
     thread_runners: [Option<ThreadRunnerHandle>; NUM_GAME_LOOPS],
-    proxy: EventLoopProxy<GameUserEvent>,
+    task_executor: TaskExecutor,
 }
 
 impl GameServerExecutor {
@@ -57,7 +51,7 @@ impl GameServerExecutor {
         match to {
             MAIN_RUNNER_ID => self.main_runner.emplace_server_check(server),
             _ => self.thread_runners[usize::from(to)]
-                .get_or_insert_with(Default::default)
+                .get_or_insert_with(|| ThreadRunnerHandle::new(to))
                 .emplace_server_check(server),
         }
     }
@@ -87,7 +81,6 @@ impl GameServerExecutor {
     }
 
     pub fn new(
-        proxy: EventLoopProxy<GameUserEvent>,
         audio: audio::Server,
         draw: draw::SendServer,
         update: update::Server,
@@ -106,18 +99,18 @@ impl GameServerExecutor {
                     ..Default::default()
                 },
             },
-            proxy,
+            task_executor: TaskExecutor::new(),
         })
     }
 
-    pub async fn stop(&mut self) {
+    pub fn stop(&mut self) {
         for runner in self.thread_runners.iter_mut() {
             if let Some(runner) = runner.take() {
                 runner
                     .stop()
                     .context("error stopping runner thread")
                     .log_error();
-                if runner.join().await {
+                if runner.join() {
                     tracing::error!("runner thread panicked");
                 }
             }
@@ -136,72 +129,87 @@ impl GameServerExecutor {
             unused(&guard);
             unused(&main_ctx);
             unused(&self);
-            block_on(async {
-                match event {
-                    Event::MainEventsCleared => {
-                        self.main_runner
-                            .base
-                            .run_single()
-                            .expect("error running main runner");
-                    }
-
-                    Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
-
-                    event => main_ctx
-                        .handle_event(&mut self, event)
-                        .await
-                        .expect("error handling events"),
+            match event {
+                Event::MainEventsCleared => {
+                    self.main_runner
+                        .base
+                        .run_single()
+                        .expect("error running main runner");
                 }
 
-                match *control_flow {
-                    ControlFlow::ExitWithCode(_) => {
-                        self.stop().await;
-                    }
+                Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
 
-                    _ => {
-                        *control_flow = if self.main_runner.base.container.is_empty() {
-                            ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
-                        } else {
-                            ControlFlow::Poll
-                        }
+                event => main_ctx
+                    .handle_event(&mut self, event)
+                    .expect("error handling events"),
+            }
+
+            match *control_flow {
+                ControlFlow::ExitWithCode(_) => {
+                    self.stop();
+                }
+
+                _ => {
+                    *control_flow = if self.main_runner.base.container.is_empty() {
+                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
+                    } else {
+                        ControlFlow::Poll
                     }
-                };
-            })
+                }
+            };
         })
     }
 
     #[allow(irrefutable_let_patterns)]
-    pub async fn execute_draw<F>(
+    pub fn execute_draw_sync<F, R>(
         &mut self,
         channel: &mut draw::ServerChannel,
-        ret: Option<ReturnMechanism>,
         callback: F,
-    ) -> anyhow::Result<Option<Box<dyn Any + Send + Sync>>>
+    ) -> anyhow::Result<R>
     where
-        F: FnOnce(&mut draw::Server) -> ExecuteCallbackReturnType + Send + 'static,
+        R: Send + 'static,
+        F: FnOnce(&mut draw::Server) -> anyhow::Result<R> + Send + 'static,
     {
         if let Some(server) = self.main_runner.base.container.draw.as_mut() {
-            let result = callback(server);
-            match ret {
-                Some(ReturnMechanism::Event(id)) => {
-                    self.proxy
-                        .send_event(GameUserEvent::ExecuteReturn(result, id))
-                        .context("unable to send ExecuteReturn event for Event return mechanism")?;
-                }
-                Some(ReturnMechanism::Sync) => return result.map(Some),
-                _ => {}
-            }
+            callback(server)
         } else {
-            channel.send(draw::RecvMsg::Execute(Box::new(callback), ret))?;
-            if let Some(ReturnMechanism::Sync) = ret {
-                if let draw::SendMsg::ExecuteReturn(result) = channel.recv().await? {
-                    return result.map(Some);
-                } else {
-                    bail!("unexpected response message from thread");
-                }
+            channel.send(draw::RecvMsg::ExecuteSync(Box::new(move |server| {
+                Box::new(callback(server))
+            })))?;
+            if let draw::SendMsg::ExecuteSyncReturn(result) = channel.recv()? {
+                Ok(result
+                    .downcast::<anyhow::Result<R>>()
+                    .map(|bx| *bx)
+                    .map_err(|_| {
+                        anyhow::format_err!("unable to downcast callback return value")
+                    })??)
+            } else {
+                bail!("unexpected response message from thread");
             }
         }
+    }
 
-        Ok(None)
+    pub fn execute_draw_event<F, R>(
+        channel: &impl GameServerSendChannel<draw::RecvMsg>,
+        callback: F,
+    ) -> anyhow::Result<()>
+    where
+        R: IntoIterator<Item = GameUserEvent> + Send + 'static,
+        F: FnOnce(&mut draw::Server) -> R + Send + 'static,
+    {
+        channel.send(draw::RecvMsg::ExecuteEvent(Box::new(move |server| {
+            Box::new(callback(server).into_iter())
+        })))
+    }
+
+    pub fn execute_blocking_task<F>(&mut self, f: F) -> TaskHandle
+    where
+        F: FnOnce(CancellationToken) -> anyhow::Result<()> + Send + 'static,
+    {
+        self.task_executor.execute(move |token| {
+            if let Err(e) = f(token) {
+                tracing::error!("error while running blocking task: {}", e);
+            }
+        })
     }
 }

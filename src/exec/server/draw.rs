@@ -1,14 +1,12 @@
 use crate::{
     events::GameUserEvent,
-    exec::dispatch::ReturnMechanism,
     graphics::{
         debug_callback::enable_gl_debug_callback, tree::DrawTree, HandleContainer,
         SendHandleContainer,
     },
-    handle_msg,
     utils::{
         error::ResultExt,
-        mpsc::{UnboundedReceiver, UnboundedSender},
+        mpsc::{Receiver, Sender},
     },
 };
 use std::{any::Any, ffi::CString, num::NonZeroU32};
@@ -23,21 +21,23 @@ use glutin::{
 };
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 
-use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
-use crate::{display::SendRawHandle, utils::mpsc::UnboundedReceiverExt};
-
-pub type ExecuteCallbackReturnType = anyhow::Result<Box<dyn Any + Send + Sync>>;
-pub type ExecuteCallback = dyn FnOnce(&mut Server) -> ExecuteCallbackReturnType + Send;
+use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
+use crate::display::SendRawHandle;
 
 pub type DrawCallback = dyn Fn(&Server) -> anyhow::Result<()> + Send;
 
 pub enum SendMsg {
-    ExecuteReturn(ExecuteCallbackReturnType),
+    ExecuteSyncReturn(Box<dyn Any + Send>),
 }
+
+type ExecuteSyncReturnType = Box<dyn Any + Send + 'static>;
+type ExecuteEventReturnType = Box<dyn Iterator<Item = GameUserEvent>>;
+type ExecuteCallback<R> = dyn FnOnce(&mut Server) -> R + Send;
+
 pub enum RecvMsg {
     SetFrequencyProfiling(bool),
-    Resize(PhysicalSize<NonZeroU32>),
-    Execute(Box<ExecuteCallback>, Option<ReturnMechanism>),
+    ExecuteSync(Box<ExecuteCallback<ExecuteSyncReturnType>>),
+    ExecuteEvent(Box<ExecuteCallback<ExecuteEventReturnType>>),
 }
 pub struct Server {
     pub draw_tree: DrawTree,
@@ -78,11 +78,30 @@ impl SendServer {
             .build(Some(display.get_raw_window_handle()));
         let gl_context = unsafe { gl_display.create_context(&gl_config, &context_attribs) }
             .context("unable to create OpenGL context")?;
+        let display_size = display.get_size();
+        let gl_surface = unsafe {
+            gl_display
+                .create_window_surface(
+                    &gl_config,
+                    &SurfaceAttributesBuilder::<WindowSurface>::new().build(
+                        display.get_raw_window_handle(),
+                        NonZeroU32::new(display_size.width).unwrap(),
+                        NonZeroU32::new(display_size.height).unwrap(),
+                    ),
+                )
+                .context("unable to create window surface for OpenGL rendering")?
+        };
+        let current_gl_context = gl_context
+            .make_current(&gl_surface)
+            .context("unable to make OpenGL context current")?;
         gl::load_with(|symbol| {
             let symbol = CString::new(symbol).unwrap();
             gl_display.get_proc_address(symbol.as_c_str()).cast()
         });
         enable_gl_debug_callback();
+        let gl_context = current_gl_context
+            .make_not_current()
+            .context("unable to make GL context not current")?;
         let display_size = {
             let size = display.get_size();
             PhysicalSize {
@@ -124,41 +143,46 @@ impl Server {
         let messages = self
             .base
             .receiver
-            .receive_all_pending(false)
-            .ok_or_else(|| anyhow::format_err!("thread runner channel was unexpectedly closed"))?;
-        let mut resize = None;
+            .try_iter(None)
+            .context("thread runner channel was unexpectedly closed")?
+            .collect::<Vec<_>>();
         for message in messages {
             match message {
-                RecvMsg::Resize(new_size) => resize = Some(new_size),
                 RecvMsg::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
-                RecvMsg::Execute(callback, ret) => {
+                RecvMsg::ExecuteSync(callback) => {
                     let result = callback(self);
-                    handle_msg!(
-                        self,
-                        ret,
-                        "Execute",
-                        || SendMsg::ExecuteReturn(result),
-                        |id| { GameUserEvent::ExecuteReturn(result, id) }
+                    if let Some(a7) = result.downcast_ref::<anyhow::Result<u32>>() {
+                        tracing::info!("{:?}", a7);
+                    }
+                    self.base.send(SendMsg::ExecuteSyncReturn(result)).context(
+                        "unable to send ExecuteSyncReturn message for Sync return mechanism",
                     )?;
+                }
+                RecvMsg::ExecuteEvent(callback) => {
+                    callback(self)
+                        .into_iter()
+                        .try_for_each(|evt| self.base.proxy.send_event(evt))
+                        .map_err(|e| anyhow::format_err!("{}", e))
+                        .context("unable to send event to event loop")?;
                 }
             }
         }
 
-        if let Some(new_size) = resize {
-            self.gl_surface
-                .resize(&self.gl_context, new_size.width, new_size.height);
-            unsafe {
-                gl::Viewport(
-                    0,
-                    0,
-                    new_size.width.get().try_into().unwrap(),
-                    new_size.height.get().try_into().unwrap(),
-                );
-            }
-            self.display_size = new_size;
-        }
-
         Ok(())
+    }
+
+    pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>) {
+        self.gl_surface
+            .resize(&self.gl_context, new_size.width, new_size.height);
+        unsafe {
+            gl::Viewport(
+                0,
+                0,
+                new_size.width.get().try_into().unwrap(),
+                new_size.height.get().try_into().unwrap(),
+            );
+        }
+        self.display_size = new_size;
     }
 }
 
@@ -236,25 +260,24 @@ impl SendGameServer for SendServer {
 }
 
 pub struct ServerChannel {
-    sender: UnboundedSender<RecvMsg>,
-    receiver: UnboundedReceiver<SendMsg>,
+    sender: Sender<RecvMsg>,
+    receiver: Receiver<SendMsg>,
     current_id: u64,
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
-    fn sender(&self) -> &UnboundedSender<RecvMsg> {
-        &self.sender
-    }
-    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
+    fn receiver(&mut self) -> &mut Receiver<SendMsg> {
         &mut self.receiver
     }
 }
 
-impl ServerChannel {
-    pub fn resize(&mut self, size: PhysicalSize<NonZeroU32>) -> anyhow::Result<()> {
-        self.send(RecvMsg::Resize(size))
+impl GameServerSendChannel<RecvMsg> for ServerChannel {
+    fn sender(&self) -> &Sender<RecvMsg> {
+        &self.sender
     }
+}
 
+impl ServerChannel {
     pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
         self.send(RecvMsg::SetFrequencyProfiling(fp))
             .context("unable to send frequency profiling request")

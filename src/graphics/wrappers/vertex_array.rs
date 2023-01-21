@@ -21,6 +21,10 @@ impl GLHandleTrait for VertexArrayTrait {
         Self::delete_mul(&[handle])
     }
 
+    fn bind(handle: GLuint, _: ()) {
+        unsafe { gl::BindVertexArray(handle) }
+    }
+
     fn identifier() -> GLenum {
         gl::VERTEX_ARRAY
     }

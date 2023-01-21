@@ -4,7 +4,7 @@ use anyhow::Context;
 use gl::types::GLuint;
 use glsl_layout::vec2;
 
-use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
+use crate::exec::server::draw;
 
 use super::wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle};
 
@@ -44,19 +44,16 @@ pub struct QuadRenderer {
 
 impl QuadRenderer {
     #[allow(unused_mut)]
-    pub async fn new(
-        executor: &mut GameServerExecutor,
+    pub fn new(
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
     ) -> anyhow::Result<Self> {
         let program = ProgramHandle::new_vf(
-            executor,
             draw,
             "quad renderer shader program",
-            Some(ReturnMechanism::Sync),
             shader::VERTEX,
             shader::FRAGMENT,
-        ).await
+        )
         .context("quad renderer initialization (in draw server) failed")?;
 
         Ok(Self {
@@ -70,7 +67,7 @@ impl QuadRenderer {
         let program = self.program.get(server);
 
         unsafe {
-            gl::BindVertexArray(*vao);
+            vao.bind();
             gl::UseProgram(*program);
 
             gl::Uniform2fv(

@@ -2,11 +2,10 @@ use crate::{
     events::GameUserEvent,
     utils::{
         frequency_runner::FrequencyProfiler,
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        mpsc::{self, Receiver, Sender},
     },
 };
 use anyhow::Context;
-use async_trait::async_trait;
 use rand::{thread_rng, Rng};
 use winit::event_loop::EventLoopProxy;
 
@@ -19,19 +18,17 @@ pub enum BaseSendMsg {
 }
 
 pub struct BaseGameServer<SendMsg, RecvMsg> {
-    pub sender: UnboundedSender<SendMsg>,
+    pub sender: Sender<SendMsg>,
     pub proxy: EventLoopProxy<GameUserEvent>,
-    pub receiver: UnboundedReceiver<RecvMsg>,
+    pub receiver: Receiver<RecvMsg>,
     pub frequency_profiling: bool,
     pub frequency_profiler: FrequencyProfiler,
     pub relative_frequency: f64,
     pub timer: f64,
 }
 
-#[async_trait(?Send)]
-pub trait GameServerChannel<SendMsg, RecvMsg> {
-    fn sender(&self) -> &UnboundedSender<RecvMsg>;
-    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg>;
+pub trait GameServerSendChannel<RecvMsg> {
+    fn sender(&self) -> &Sender<RecvMsg>;
     fn send(&self, message: RecvMsg) -> anyhow::Result<()> {
         self.sender()
             .send(message)
@@ -41,10 +38,26 @@ pub trait GameServerChannel<SendMsg, RecvMsg> {
             )
     }
 
-    async fn recv(&mut self) -> anyhow::Result<SendMsg> {
-        self.receiver().recv().await.ok_or_else(|| {
-            anyhow::format_err!("unable to receive message from (local) game server (the server was probably closed)")
-        })
+    fn clone_sender(&self) -> ServerSendChannel<RecvMsg> {
+        ServerSendChannel(self.sender().clone())
+    }
+}
+
+pub trait GameServerChannel<SendMsg, RecvMsg>: GameServerSendChannel<RecvMsg> {
+    fn receiver(&mut self) -> &mut Receiver<SendMsg>;
+
+    fn recv(&mut self) -> anyhow::Result<SendMsg> {
+        self.receiver().recv().context(
+            "unable to receive message from (local) game server (the server was probably closed)",
+        )
+    }
+}
+
+pub struct ServerSendChannel<RecvMsg>(Sender<RecvMsg>);
+
+impl<RecvMsg> GameServerSendChannel<RecvMsg> for ServerSendChannel<RecvMsg> {
+    fn sender(&self) -> &Sender<RecvMsg> {
+        &self.0
     }
 }
 
@@ -91,11 +104,9 @@ pub trait SendGameServer: Send {
 }
 
 impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
-    pub fn new(
-        proxy: EventLoopProxy<GameUserEvent>,
-    ) -> (Self, UnboundedSender<RecvMsg>, UnboundedReceiver<SendMsg>) {
-        let (send_sender, send_receiver) = mpsc::unbounded_channel();
-        let (recv_sender, recv_receiver) = mpsc::unbounded_channel();
+    pub fn new(proxy: EventLoopProxy<GameUserEvent>) -> (Self, Sender<RecvMsg>, Receiver<SendMsg>) {
+        let (send_sender, send_receiver) = mpsc::channels();
+        let (recv_sender, recv_receiver) = mpsc::channels();
         (
             Self {
                 receiver: recv_receiver,

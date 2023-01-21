@@ -3,10 +3,10 @@ use std::{borrow::Cow, hash::Hash, marker::PhantomData};
 use crate::exec::server::draw;
 
 use self::wrappers::{
-    buffer::{Buffer, BufferContainer, BufferHandle, SendBufferContainer},
+    buffer::{BufferContainer, SendBufferContainer},
     framebuffer::{Framebuffer, FramebufferContainer, FramebufferHandle, SendFramebufferContainer},
     shader::{Program, ProgramContainer, ProgramHandle, SendProgramContainer},
-    texture::{SendTextureContainer, Texture, TextureContainer, TextureHandle},
+    texture::{SendTextureContainer, TextureContainer},
     vertex_array::{
         SendVertexArrayContainer, VertexArray, VertexArrayContainer, VertexArrayHandle,
     },
@@ -93,21 +93,21 @@ impl HandleContainer {
         VertexArray::new(name).map(|v| self.vertex_arrays.insert(handle, v))
     }
 
-    pub fn create_buffer(
-        &mut self,
-        name: impl Into<Cow<'static, str>>,
-        handle: &BufferHandle,
-    ) -> anyhow::Result<Buffer> {
-        Buffer::new(name).map(|b| self.buffers.insert(handle, b))
-    }
+    // pub fn create_buffer(
+    //     &mut self,
+    //     name: impl Into<Cow<'static, str>>,
+    //     handle: &BufferHandle,
+    // ) -> anyhow::Result<Buffer> {
+    //     Buffer::new(name).map(|b| self.buffers.insert(handle, b))
+    // }
 
-    pub fn create_texture(
-        &mut self,
-        name: impl Into<Cow<'static, str>>,
-        handle: &TextureHandle,
-    ) -> anyhow::Result<Texture> {
-        Texture::new(name).map(|t| self.textures.insert(handle, t))
-    }
+    // pub fn create_texture(
+    //     &mut self,
+    //     name: impl Into<Cow<'static, str>>,
+    //     handle: &TextureHandle,
+    // ) -> anyhow::Result<Texture> {
+    //     Texture::new(name).map(|t| self.textures.insert(handle, t))
+    // }
 
     pub fn create_vf_program(
         &mut self,

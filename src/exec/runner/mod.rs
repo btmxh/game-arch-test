@@ -1,16 +1,22 @@
-use async_thread::JoinHandle;
+use std::{
+    thread::{self, JoinHandle},
+    time::{Duration, Instant},
+};
 
 use anyhow::{bail, Context};
 
 use crate::utils::{
     clock::SteadyClock,
-    mpsc::{self, UnboundedReceiverExt},
+    mpsc,
     sync::{ClockSync, OFClockSync},
 };
 
 use self::container::ServerContainer;
 
-use super::server::{SendGameServer, ServerKind};
+use super::{
+    server::{SendGameServer, ServerKind},
+    DEFAULT_RECV_TIMEOUT,
+};
 
 pub mod container;
 
@@ -41,14 +47,14 @@ impl Runner {
 
 pub struct ThreadRunner {
     base: Runner,
-    sender: mpsc::UnboundedSender<FromRunnerMsg>,
-    receiver: mpsc::UnboundedReceiver<ToRunnerMsg>,
+    sender: mpsc::Sender<FromRunnerMsg>,
+    receiver: mpsc::Receiver<ToRunnerMsg>,
 }
 
 pub struct ThreadRunnerHandle {
     join_handle: JoinHandle<()>,
-    sender: mpsc::UnboundedSender<ToRunnerMsg>,
-    receiver: mpsc::UnboundedReceiver<FromRunnerMsg>,
+    sender: mpsc::Sender<ToRunnerMsg>,
+    receiver: mpsc::Receiver<FromRunnerMsg>,
 }
 
 impl ThreadRunner {
@@ -62,7 +68,12 @@ impl ThreadRunner {
         loop {
             let pending_msgs = self
                 .receiver
-                .receive_all_pending(self.base.container.is_empty())
+                .try_iter(
+                    self.base
+                        .container
+                        .is_empty()
+                        .then_some(DEFAULT_RECV_TIMEOUT),
+                )
                 .expect("thread runner channel was unexpectedly closed");
             for msg in pending_msgs {
                 match msg {
@@ -91,18 +102,21 @@ impl ThreadRunner {
 }
 
 impl ThreadRunnerHandle {
-    pub fn new() -> Self {
-        let (to_send, to_recv) = mpsc::unbounded_channel();
-        let (from_send, from_recv) = mpsc::unbounded_channel();
+    pub fn new(id: RunnerId) -> Self {
+        let (to_send, to_recv) = mpsc::channels();
+        let (from_send, from_recv) = mpsc::channels();
         Self {
-            join_handle: async_thread::spawn(move || {
-                ThreadRunner {
-                    base: Runner::default(),
-                    sender: from_send,
-                    receiver: to_recv,
-                }
-                .run();
-            }),
+            join_handle: thread::Builder::new()
+                .name(format!("runner thread {id}"))
+                .spawn(move || {
+                    ThreadRunner {
+                        base: Runner::default(),
+                        sender: from_send,
+                        receiver: to_recv,
+                    }
+                    .run()
+                })
+                .expect("failed to spawn thread"),
             sender: to_send,
             receiver: from_recv,
         }
@@ -115,28 +129,22 @@ impl ThreadRunnerHandle {
             .context("thread runner channel was unexpectedly closed")
     }
 
-    fn recv(&mut self) -> anyhow::Result<FromRunnerMsg> {
+    fn recv(&mut self) -> anyhow::Result<Option<FromRunnerMsg>> {
         self.receiver
-            .blocking_recv()
-            .ok_or_else(|| anyhow::format_err!("thread runner channel was unexpectedly closed"))
+            .recv_timeout(DEFAULT_RECV_TIMEOUT)
+            .context("thread runner channel was unexpectedly closed")
     }
 
     pub fn stop(&self) -> anyhow::Result<()> {
         self.send(ToRunnerMsg::Stop)
     }
 
-    pub async fn join(self) -> bool {
-        self.join_handle.join().await.is_err()
+    pub fn join(self) -> bool {
+        self.join_handle.join().is_err()
     }
 
     pub fn set_frequency(&self, frequency: f64) -> anyhow::Result<()> {
         self.send(ToRunnerMsg::SetFrequency(frequency))
-    }
-}
-
-impl Default for ThreadRunnerHandle {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -183,10 +191,21 @@ impl ServerMover for ThreadRunnerHandle {
     fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
         self.send(ToRunnerMsg::RequestServer(kind))
             .context("unable to request server from runner thread")?;
-        let message = self
-            .recv()
-            .context("unable to receive server from runner thread")?;
-        if let FromRunnerMsg::MoveServer(server) = message {
+        let sent = Instant::now();
+        let mut warn = false;
+        if let FromRunnerMsg::MoveServer(server) = loop {
+            if let Some(msg) = self
+                .recv()
+                .context("unable to receive server from runner thread")?
+            {
+                break msg;
+            }
+
+            if sent.elapsed() > Duration::from_secs(100) && !warn {
+                warn = true;
+                tracing::warn!("taking server taking an unexpectedly long amount of time...");
+            }
+        } {
             Ok(server)
         } else {
             bail!("invalid thread runner response")

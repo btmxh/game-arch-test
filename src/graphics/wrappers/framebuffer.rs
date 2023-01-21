@@ -4,10 +4,13 @@ use gl::types::{GLenum, GLuint};
 use glutin::prelude::GlConfig;
 use winit::dpi::PhysicalSize;
 
-use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
+use crate::{
+    events::GameUserEvent,
+    exec::{executor::GameServerExecutor, server::draw},
+};
 
 use super::{
-    texture::{Texture, TextureHandle},
+    texture::{Texture, TextureHandle, TextureType},
     GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer,
 };
 
@@ -26,6 +29,10 @@ impl GLHandleTrait for FramebufferTrait {
 
     fn delete(handle: GLuint) {
         Self::delete_mul(&[handle])
+    }
+
+    fn bind(handle: GLuint, _: ()) {
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, handle) }
     }
 
     fn identifier() -> GLenum {
@@ -53,20 +60,18 @@ pub struct DefaultTextureFramebuffer {
 }
 
 impl DefaultTextureFramebuffer {
-    pub async fn new(
-        executor: &mut GameServerExecutor,
+    pub fn new(
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>>,
     ) -> anyhow::Result<Self> {
         let name = name.into();
         let slf = Self {
-            texture: TextureHandle::new(
-                executor,
+            texture: TextureHandle::new_args(
                 draw,
-                Some(ReturnMechanism::Sync),
                 format!("{name} texture attachment"),
-            ).await?,
-            framebuffer: FramebufferHandle::new(executor, draw, Some(ReturnMechanism::Sync), name).await?,
+                TextureType::E2D,
+            )?,
+            framebuffer: FramebufferHandle::new(draw, name)?,
             size: None,
         };
         Ok(slf)
@@ -85,7 +90,7 @@ impl DefaultTextureFramebuffer {
                     .handles
                     .textures
                     .replace(&self.texture, |old_texture| {
-                        Texture::new(old_texture.name())
+                        Texture::new_args(old_texture.name(), TextureType::E2D)
                     })?;
 
                 (self.framebuffer.get(server), texture)
@@ -132,9 +137,8 @@ impl DefaultTextureFramebuffer {
         Ok(())
     }
 
-    pub async fn resize(
+    pub fn resize(
         &mut self,
-        executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         new_size: PhysicalSize<u32>,
     ) -> anyhow::Result<()> {
@@ -144,10 +148,11 @@ impl DefaultTextureFramebuffer {
 
         let slf = self.clone();
         self.size = Some(new_size);
-        executor.execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
-            slf.resize_in_server(server, new_size)?;
-            Ok(Box::new(()))
-        }).await?;
+        GameServerExecutor::execute_draw_event(draw, move |server| {
+            slf.resize_in_server(server, new_size)
+                .err()
+                .map(GameUserEvent::Error)
+        })?;
         Ok(())
     }
 }

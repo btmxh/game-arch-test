@@ -9,13 +9,15 @@ use gl::types::{GLchar, GLenum, GLuint};
 
 use crate::{
     enclose,
-    exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw},
+    events::GameUserEvent,
+    exec::{executor::GameServerExecutor, server::draw},
     graphics::GfxHandle,
 };
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
 pub struct ShaderTrait;
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ShaderType {
     Vertex = gl::VERTEX_SHADER as isize,
     Fragment = gl::FRAGMENT_SHADER as isize,
@@ -32,6 +34,8 @@ impl GLHandleTrait<ShaderType> for ShaderTrait {
     fn delete(handle: GLuint) {
         unsafe { gl::DeleteShader(handle) }
     }
+
+    fn bind(_: GLuint, _: ShaderType) {}
 
     fn identifier() -> GLenum {
         gl::SHADER
@@ -55,6 +59,8 @@ impl GLHandleTrait for ProgramTrait {
     fn identifier() -> GLenum {
         gl::PROGRAM
     }
+
+    fn bind(_: GLuint, _: ()) {}
 
     fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
         Some(&mut server.handles.programs)
@@ -151,23 +157,21 @@ impl Program {
 
 impl ProgramHandle {
     #[allow(unused_mut)]
-    pub async fn new_vf(
-        executor: &mut GameServerExecutor,
+    pub fn new_vf(
         draw: &mut draw::ServerChannel,
         name: impl Into<Cow<'static, str>> + Send + 'static,
-        ret: Option<ReturnMechanism>,
         vertex: &'static str,
         fragment: &'static str,
     ) -> anyhow::Result<Self> {
         let handle = unsafe { Self::new_uninit(draw) };
-        executor.execute_draw(
+        GameServerExecutor::execute_draw_event(
             draw,
-            ret,
             enclose!((handle) move |server| {
-                server.handles.create_vf_program(name, &handle, vertex, fragment)?;
-                Ok(Box::new(()))
+                server.handles.create_vf_program(name, &handle, vertex, fragment)
+                    .err()
+                    .map(GameUserEvent::Error)
             }),
-        ).await?;
+        )?;
         Ok(handle)
     }
 }

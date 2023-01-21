@@ -6,11 +6,11 @@ use std::{
 use anyhow::Context;
 use winit::event_loop::EventLoopProxy;
 
-use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
+use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 use crate::{
     events::GameUserEvent,
     exec::dispatch::{DispatchId, DispatchMsg},
-    utils::mpsc::{UnboundedReceiver, UnboundedReceiverExt, UnboundedSender},
+    utils::mpsc::{Receiver, Sender},
 };
 
 pub enum SendMsg {}
@@ -31,7 +31,7 @@ impl GameServer for Server {
         let messages = self
             .base
             .receiver
-            .receive_all_pending(false)
+            .try_iter(None)
             .context("thread runner channel was unexpectedly closed")?;
         for message in messages {
             match message {
@@ -60,7 +60,9 @@ impl GameServer for Server {
                 .proxy
                 .send_event(GameUserEvent::Dispatch(DispatchMsg::ExecuteDispatch(
                     done_timeouts,
-                )))?;
+                )))
+                .map_err(|e| anyhow::format_err!("{}", e))
+                .context("unable to send event to event loop")?;
         }
         Ok(())
     }
@@ -93,16 +95,19 @@ impl Server {
 }
 
 pub struct ServerChannel {
-    sender: UnboundedSender<RecvMsg>,
-    receiver: UnboundedReceiver<SendMsg>,
+    sender: Sender<RecvMsg>,
+    receiver: Receiver<SendMsg>,
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
-    fn sender(&self) -> &UnboundedSender<RecvMsg> {
-        &self.sender
-    }
-    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
+    fn receiver(&mut self) -> &mut Receiver<SendMsg> {
         &mut self.receiver
+    }
+}
+
+impl GameServerSendChannel<RecvMsg> for ServerChannel {
+    fn sender(&self) -> &Sender<RecvMsg> {
+        &self.sender
     }
 }
 

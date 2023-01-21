@@ -1,9 +1,9 @@
 use winit::dpi::PhysicalSize;
 
-use crate::exec::{dispatch::ReturnMechanism, executor::GameServerExecutor, server::draw};
+use crate::exec::{executor::GameServerExecutor, server::draw};
 
 use super::wrappers::{
-    framebuffer::{DefaultTextureFramebuffer, FramebufferHandle},
+    framebuffer::{DefaultTextureFramebuffer, Framebuffer, FramebufferHandle},
     shader::ProgramHandle,
     texture::TextureHandle,
     vertex_array::VertexArrayHandle,
@@ -93,21 +93,18 @@ pub struct BlurRenderer {
 
 impl BlurRenderer {
     #[allow(unused_mut)]
-    pub async fn new(
-        executor: &mut GameServerExecutor,
+    pub fn new(
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,
     ) -> anyhow::Result<Self> {
         let program = ProgramHandle::new_vf(
-            executor,
             draw,
             "blur shader program",
-            Some(ReturnMechanism::Sync),
             shader::VERTEX,
             shader::FRAGMENT,
-        ).await?;
-        let framebuffer_0 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0").await?;
-        let framebuffer_1 = DefaultTextureFramebuffer::new(executor, draw, "blur framebuffer 0").await?;
+        )?;
+        let framebuffer_0 = DefaultTextureFramebuffer::new(draw, "blur framebuffer 0")?;
+        let framebuffer_1 = DefaultTextureFramebuffer::new(draw, "blur framebuffer 1")?;
         let framebuffers = [framebuffer_0, framebuffer_1];
         // unstable lol
         // let framebuffers = Self::zero_range_two().try_map(|i| {
@@ -121,9 +118,8 @@ impl BlurRenderer {
         })
     }
 
-    pub async fn redraw(
+    pub fn redraw(
         &mut self,
-        executor: &mut GameServerExecutor,
         draw: &mut draw::ServerChannel,
         window_size: PhysicalSize<u32>,
         texture: TextureHandle,
@@ -137,11 +133,11 @@ impl BlurRenderer {
         };
         let blur_sigma = blur_sigma * downscale;
         for framebuffer in self.framebuffers.iter_mut() {
-            framebuffer.resize(executor, draw, framebuffer_size).await?;
+            framebuffer.resize(draw, framebuffer_size)?;
         }
 
         let slf = self.clone();
-        executor.execute_draw(draw, Some(ReturnMechanism::Sync), move |server| {
+        GameServerExecutor::execute_draw_event(draw, move |server| {
             let program = slf.program.get(server);
             let vertex_array = slf.vertex_array.get(server);
             let framebuffers = slf
@@ -150,9 +146,9 @@ impl BlurRenderer {
                 .map(|f| f.framebuffer.get(server))
                 .collect::<Vec<_>>();
 
+            vertex_array.bind();
             unsafe {
                 gl::UseProgram(*program);
-                gl::BindVertexArray(*vertex_array);
                 gl::Uniform1f(
                     gl::GetUniformLocation(*program, "sigma\0".as_ptr() as *const _),
                     blur_sigma,
@@ -166,8 +162,8 @@ impl BlurRenderer {
                 gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width as f32, 0.0);
                 gl::Uniform1f(loc_lod, lod);
                 gl::ActiveTexture(gl::TEXTURE0);
-                gl::BindTexture(gl::TEXTURE_2D, *texture.get(server));
-                gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[0]);
+                texture.get(server).bind();
+                framebuffers[0].bind();
                 gl::Clear(gl::COLOR_BUFFER_BIT);
                 gl::Viewport(
                     0,
@@ -179,8 +175,8 @@ impl BlurRenderer {
                 gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height as f32);
                 gl::Uniform1f(loc_lod, 0.0);
                 gl::ActiveTexture(gl::TEXTURE0);
-                gl::BindTexture(gl::TEXTURE_2D, *slf.framebuffers[0].texture.get(server));
-                gl::BindFramebuffer(gl::FRAMEBUFFER, *framebuffers[1]);
+                slf.framebuffers[0].texture.get(server).bind();
+                framebuffers[1].bind();
                 gl::Clear(gl::COLOR_BUFFER_BIT);
                 gl::Viewport(
                     0,
@@ -189,7 +185,7 @@ impl BlurRenderer {
                     framebuffer_size.height as _,
                 );
                 gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
-                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                Framebuffer::unbind_static();
                 gl::Viewport(
                     0,
                     0,
@@ -197,8 +193,8 @@ impl BlurRenderer {
                     window_size.height.try_into().unwrap(),
                 );
             };
-            Ok(Box::new(()))
-        }).await?;
+            []
+        })?;
         Ok(())
     }
 

@@ -4,10 +4,10 @@ use winit::event_loop::EventLoopProxy;
 use crate::{
     events::GameUserEvent,
     exec::dispatch::DispatchMsg,
-    utils::mpsc::{UnboundedReceiver, UnboundedReceiverExt, UnboundedSender},
+    utils::mpsc::{Receiver, Sender},
 };
 
-use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer};
+use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer, GameServerSendChannel};
 
 pub enum SendMsg {
     Dispatch(DispatchMsg),
@@ -21,16 +21,19 @@ pub struct Server {
 }
 
 pub struct ServerChannel {
-    sender: UnboundedSender<RecvMsg>,
-    receiver: UnboundedReceiver<SendMsg>,
+    sender: Sender<RecvMsg>,
+    receiver: Receiver<SendMsg>,
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
-    fn sender(&self) -> &UnboundedSender<RecvMsg> {
-        &self.sender
-    }
-    fn receiver(&mut self) -> &mut UnboundedReceiver<SendMsg> {
+    fn receiver(&mut self) -> &mut Receiver<SendMsg> {
         &mut self.receiver
+    }
+}
+
+impl GameServerSendChannel<RecvMsg> for ServerChannel {
+    fn sender(&self) -> &Sender<RecvMsg> {
+        &self.sender
     }
 }
 
@@ -40,7 +43,7 @@ impl GameServer for Server {
         let messages = self
             .base
             .receiver
-            .receive_all_pending(false)
+            .try_iter(None)
             .context("thread runner channel was unexpectedly closed")?;
         for message in messages {
             match message {

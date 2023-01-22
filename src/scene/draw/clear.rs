@@ -1,4 +1,4 @@
-use crate::{exec::server::draw::Server, graphics::context::DrawContext};
+use crate::graphics::context::DrawContext;
 
 pub struct ClearScreen;
 

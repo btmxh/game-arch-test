@@ -1,17 +1,13 @@
 use crate::{
     events::GameUserEvent,
     exec::server::{
-        draw::{DrawCallback, RecvMsg, SendMsg, ServerChannel},
+        draw::{RecvMsg, SendMsg, ServerChannel},
         BaseGameServer,
     },
     graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
     scene::draw::DrawRoot,
-    utils::{
-        error::ResultExt,
-        mpsc::{Receiver, Sender},
-    },
 };
-use std::{any::Any, ffi::CString, num::NonZeroU32};
+use std::{ffi::CString, num::NonZeroU32};
 
 use anyhow::Context;
 use glutin::{
@@ -189,7 +185,7 @@ impl DrawContext {
             gl::ClearColor(0.0, 0.0, 0.2, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
-        root_scene.draw(self);
+        root_scene.draw(self)?;
         self.gl_surface.swap_buffers(&self.gl_context)?;
         Ok(())
     }

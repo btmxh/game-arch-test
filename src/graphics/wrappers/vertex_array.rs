@@ -1,6 +1,6 @@
 use gl::types::{GLenum, GLuint};
 
-use crate::{exec::server::draw, graphics::context::DrawContext};
+use crate::graphics::context::DrawContext;
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 

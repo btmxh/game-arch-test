@@ -4,20 +4,13 @@ use crate::{
     scene::draw::DrawRoot,
     utils::mpsc::{Receiver, Sender},
 };
-use std::{any::Any, ffi::CString, num::NonZeroU32};
+use std::any::Any;
 
 use anyhow::Context;
-use glutin::{
-    config::Config,
-    context::{ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext},
-    display::{Display, GetGlDisplay},
-    prelude::{GlDisplay, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentGlContext},
-    surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface},
-};
-use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
+use glutin::config::Config;
+use winit::event_loop::EventLoopProxy;
 
-use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
-use crate::display::SendRawHandle;
+use super::{GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 
 pub type DrawCallback = dyn FnMut(&Server) -> anyhow::Result<()> + Send;
 

@@ -51,8 +51,8 @@ impl Background {
     fn init_test_texture(
         executor: &mut GameServerExecutor,
         channels: &mut ServerChannels,
-        blur: BlurRenderer,
-        renderer: QuadRenderer,
+        _blur: BlurRenderer,
+        _renderer: QuadRenderer,
     ) -> anyhow::Result<TextureHandle> {
         let test_texture =
             TextureHandle::new_args(&mut channels.draw, "test texture", TextureType::E2D)?;
@@ -67,8 +67,8 @@ impl Background {
             if token.is_cancelled() {
                 return Ok(())
             }
-            let width = img.width();
-            let height = img.height();
+            let _width = img.width();
+            let _height = img.height();
 
             GameServerExecutor::execute_draw_event(&channel, move |server, _| {
                 let tex_handle = test_texture.get(server);

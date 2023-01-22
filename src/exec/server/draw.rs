@@ -1,9 +1,6 @@
 use crate::{
     events::GameUserEvent,
-    graphics::{
-        debug_callback::enable_gl_debug_callback, tree::DrawTree, HandleContainer,
-        SendHandleContainer,
-    },
+    graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
     utils::{
         error::ResultExt,
         mpsc::{Receiver, Sender},
@@ -24,7 +21,7 @@ use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 use crate::display::SendRawHandle;
 
-pub type DrawCallback = dyn Fn(&Server) -> anyhow::Result<()> + Send;
+pub type DrawCallback = dyn FnMut(&Server) -> anyhow::Result<()> + Send;
 
 pub enum SendMsg {
     ExecuteSyncReturn(Box<dyn Any + Send>),
@@ -40,7 +37,7 @@ pub enum RecvMsg {
     ExecuteEvent(Box<ExecuteCallback<ExecuteEventReturnType>>),
 }
 pub struct Server {
-    pub draw_tree: DrawTree,
+    pub draw_callback: Option<Box<DrawCallback>>,
     pub handles: HandleContainer,
     pub swap_interval: SwapInterval,
     pub gl_surface: Surface<WindowSurface>,
@@ -53,7 +50,7 @@ pub struct Server {
 }
 
 pub struct SendServer {
-    pub draw_tree: DrawTree,
+    pub draw_callback: Option<Box<DrawCallback>>,
     pub handles: SendHandleContainer,
     pub swap_interval: SwapInterval,
     pub gl_context: NotCurrentContext,
@@ -119,7 +116,7 @@ impl SendServer {
                 gl_config,
                 swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
                 handles: SendHandleContainer::new(),
-                draw_tree: DrawTree::new(),
+                draw_callback: None,
             },
             ServerChannel {
                 sender,
@@ -136,6 +133,13 @@ impl Server {
             .set_swap_interval(&self.gl_context, swap_interval)?;
         self.swap_interval = swap_interval;
         Ok(())
+    }
+
+    pub fn set_draw_callback<F>(&mut self, callback: F)
+    where
+        F: FnMut(&Server) -> anyhow::Result<()> + Send + 'static,
+    {
+        self.draw_callback = Some(Box::new(callback));
     }
 
     #[allow(clippy::redundant_closure_call)]
@@ -201,7 +205,7 @@ impl GameServer for Server {
             display_size: self.display_size,
             swap_interval: self.swap_interval,
             handles: self.handles.to_send(),
-            draw_tree: self.draw_tree,
+            draw_callback: self.draw_callback,
         }))
     }
 
@@ -212,10 +216,13 @@ impl GameServer for Server {
             gl::ClearColor(0.0, 0.0, 0.2, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
-        self.draw_tree
-            .render(self)
-            .context("error drawing draw tree")
-            .log_error();
+        if let Some(mut callback) = self.draw_callback.take() {
+            callback(self)
+                .context("error execute draw callback")
+                .log_error();
+            // borrow checker thing
+            self.draw_callback = Some(callback);
+        }
         self.gl_surface.swap_buffers(&self.gl_context)?;
         Ok(())
     }
@@ -250,7 +257,7 @@ impl SendServer {
             display_size: self.display_size,
             swap_interval: self.swap_interval,
             handles: self.handles.to_unsend(),
-            draw_tree: self.draw_tree,
+            draw_callback: self.draw_callback,
         })
     }
 }

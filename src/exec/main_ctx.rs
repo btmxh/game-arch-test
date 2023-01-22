@@ -119,7 +119,6 @@ impl MainContext {
             TextureHandle::new_args(&mut channels.draw, "test texture", TextureType::E2D)?;
 
         let channel = channels.draw.clone_sender();
-        let node_handle = channels.draw.generate_id();
         executor.execute_blocking_task(enclose!((test_texture) move |token| {
             let img = image::io::Reader::open("BG.jpg")
                 .context("unable to load test texture")?
@@ -164,7 +163,7 @@ impl MainContext {
                     gl::GenerateMipmap(gl::TEXTURE_2D);
                 };
 
-                server.draw_tree.create_root(node_handle, move |server| {
+                server.set_draw_callback(move |server| {
                     if let Some(texture) = blur.output_texture_handle().try_get(server) {
                         let viewport_size = server.display_size;
                         let vw = viewport_size.width.get() as f32;

@@ -21,7 +21,7 @@ use crate::{
             vertex_array::VertexArrayHandle,
         },
     },
-    utils::{clock::debug_get_time, enclose::enclose, error::ResultExt},
+    utils::{args::args, clock::debug_get_time, enclose::enclose, error::ResultExt},
 };
 
 use super::{
@@ -91,11 +91,19 @@ impl MainContext {
         &mut self,
         executor: &mut GameServerExecutor,
         size: PhysicalSize<NonZeroU32>,
+        block: bool,
     ) -> anyhow::Result<()> {
-        executor.execute_draw_sync(&mut self.channels.draw, move |server| {
-            server.resize(size);
-            Ok(())
-        })?;
+        if block {
+            executor.execute_draw_sync(&mut self.channels.draw, move |server| {
+                server.resize(size);
+                Ok(())
+            })?;
+        } else {
+            GameServerExecutor::execute_draw_event(&mut self.channels.draw, move |server| {
+                server.resize(size);
+                []
+            })?;
+        }
         self.update_blur_texture(32.0)?;
         Ok(())
     }
@@ -217,42 +225,62 @@ impl MainContext {
                     .context("unable to send event to event loop")?;
             }
 
+            Event::RedrawRequested(window_id) if self.display.get_window_id() == window_id => {
+                // somewhat hacky way of waiting a buffer swap
+                if args().block_event_loop {
+                    if executor.main_runner.base.container.draw.is_some() {
+                        executor
+                            .main_runner
+                            .base
+                            .run_single()
+                            .expect("error running main runner");
+                    } else {
+                        executor.execute_draw_sync(&mut self.channels.draw, |_| Ok(()))?;
+                        executor.execute_draw_sync(&mut self.channels.draw, |_| Ok(()))?;
+                    }
+                }
+            }
+
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::Resized(size),
             } if self.display.get_window_id() == window_id => {
-                const THROTTLE_DURATION: Duration = Duration::from_millis(100);
-                fn resize_timeout_func(
-                    slf: &mut MainContext,
-                    executor: &mut GameServerExecutor,
-                ) -> anyhow::Result<()> {
-                    if let Some(size) = slf.resize_size.take() {
-                        slf.resize(executor, size)?;
-                        slf.resize_size = None;
-                        slf.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
-                            resize_timeout_func(slf, executor)
-                        })?;
-                    } else {
-                        slf.resize_should_wait = false;
-                    }
-
-                    Ok(())
-                }
-
                 let width = NonZeroU32::new(size.width);
                 let height = NonZeroU32::new(size.height);
                 let size =
                     width.and_then(|width| height.map(|height| PhysicalSize::new(width, height)));
                 if let Some(size) = size {
-                    // throttle
-                    if self.resize_should_wait {
-                        self.resize_size = Some(size);
+                    if args().throttle_resize {
+                        // throttle
+                        const THROTTLE_DURATION: Duration = Duration::from_millis(100);
+                        fn resize_timeout_func(
+                            slf: &mut MainContext,
+                            executor: &mut GameServerExecutor,
+                        ) -> anyhow::Result<()> {
+                            if let Some(size) = slf.resize_size.take() {
+                                slf.resize(executor, size, false)?;
+                                slf.resize_size = None;
+                                slf.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
+                                    resize_timeout_func(slf, executor)
+                                })?;
+                            } else {
+                                slf.resize_should_wait = false;
+                            }
+
+                            Ok(())
+                        }
+
+                        if self.resize_should_wait {
+                            self.resize_size = Some(size);
+                        } else {
+                            self.resize(executor, size, false)?;
+                            self.resize_should_wait = true;
+                            self.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
+                                resize_timeout_func(slf, executor)
+                            })?;
+                        }
                     } else {
-                        self.resize(executor, size)?;
-                        self.resize_should_wait = true;
-                        self.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
-                            resize_timeout_func(slf, executor)
-                        })?;
+                        self.resize(executor, size, !args().block_event_loop)?;
                     }
                 }
             }

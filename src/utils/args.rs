@@ -20,6 +20,23 @@ pub struct Args {
     pub log_level: Level,
     #[arg(long)]
     pub log_file: Option<String>,
+    /// Whether or not to block the event loop on certain events like
+    /// `RedrawRequested` or `Resize`. This should be turned on or off
+    /// accordingly for better performance and in order to get intended
+    /// behavior.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = default_block_event_loop())]
+    pub block_event_loop: bool,
+    /// Whether or not to throttle while handling Resize events.
+    /// 
+    /// This should be used on platforms with the flag `block_event_loop`
+    /// set to false (X11, etc.). Otherwise, all Resize events would then
+    /// be handled, making the draw thread lags back.
+    /// 
+    /// On platforms with the flag `block_event_loop`, enabling this will
+    /// make the resizing process somewhat laggy and introduce rendering
+    /// artifacts (only when resize).
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = !default_block_event_loop())]
+    pub throttle_resize: bool,
 }
 
 static mut STATIC_ARGS: MaybeUninit<Args> = MaybeUninit::uninit();
@@ -31,4 +48,9 @@ pub fn parse_args() {
 
 pub fn args() -> &'static Args {
     unsafe { STATIC_ARGS.assume_init_ref() }
+}
+
+fn default_block_event_loop() -> bool {
+    // TODO: inspect winit source code and add more OSes
+    cfg!(windows)
 }

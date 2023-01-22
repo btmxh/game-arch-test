@@ -23,7 +23,7 @@ use super::{
 };
 
 pub struct GameServerExecutor {
-    main_runner: MainRunner,
+    pub main_runner: MainRunner,
     thread_runners: [Option<ThreadRunnerHandle>; NUM_GAME_LOOPS],
     task_executor: TaskExecutor,
 }

@@ -85,21 +85,22 @@ pub enum ServerKind {
 
 pub trait GameServer {
     fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()>;
-    fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>>;
+    fn to_send(self) -> anyhow::Result<SendGameServer>;
 }
-pub trait SendGameServer: Send {
-    fn server_kind(&self) -> ServerKind;
 
-    fn downcast_audio(self: Box<Self>) -> anyhow::Result<audio::Server> {
-        panic!("invalid downcast")
-    }
+pub enum SendGameServer {
+    Audio(audio::Server),
+    Update(update::Server),
+    Draw(draw::SendServer),
+}
 
-    fn downcast_draw(self: Box<Self>) -> anyhow::Result<draw::Server> {
-        panic!("invalid downcast")
-    }
-
-    fn downcast_update(self: Box<Self>) -> anyhow::Result<update::Server> {
-        panic!("invalid downcast")
+impl SendGameServer {
+    pub fn server_kind(&self) -> ServerKind {
+        match self {
+            Self::Audio(_) => ServerKind::Audio,
+            Self::Draw(_) => ServerKind::Draw,
+            Self::Update(_) => ServerKind::Update,
+        }
     }
 }
 

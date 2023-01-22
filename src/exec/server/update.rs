@@ -66,18 +66,8 @@ impl GameServer for Server {
         }
         Ok(())
     }
-    fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>> {
-        Ok(Box::new(self))
-    }
-}
-
-impl SendGameServer for Server {
-    fn server_kind(&self) -> super::ServerKind {
-        super::ServerKind::Update
-    }
-
-    fn downcast_update(self: Box<Self>) -> anyhow::Result<self::Server> {
-        Ok(*self)
+    fn to_send(self) -> anyhow::Result<SendGameServer> {
+        Ok(SendGameServer::Update(self))
     }
 }
 

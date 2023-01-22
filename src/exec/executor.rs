@@ -33,7 +33,7 @@ impl GameServerExecutor {
         &mut self,
         from: RunnerId,
         kind: ServerKind,
-    ) -> anyhow::Result<Box<dyn SendGameServer>> {
+    ) -> anyhow::Result<SendGameServer> {
         match from {
             MAIN_RUNNER_ID => self.main_runner.take_server_check(kind),
             _ => self.thread_runners[usize::from(from)]
@@ -46,7 +46,7 @@ impl GameServerExecutor {
     fn move_server_to(
         &mut self,
         to: RunnerId,
-        server: Box<dyn SendGameServer>,
+        server: SendGameServer,
     ) -> anyhow::Result<()> {
         match to {
             MAIN_RUNNER_ID => self.main_runner.emplace_server_check(server),
@@ -90,7 +90,7 @@ impl GameServerExecutor {
             draw: None,
             update: Some(update),
         };
-        container.emplace_server_check(Box::new(draw))?;
+        container.emplace_server_check(SendGameServer::Draw(draw))?;
         Ok(Self {
             thread_runners: Default::default(),
             main_runner: MainRunner {

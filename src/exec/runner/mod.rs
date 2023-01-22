@@ -21,11 +21,11 @@ use super::{
 pub mod container;
 
 pub enum FromRunnerMsg {
-    MoveServer(Option<Box<dyn SendGameServer>>),
+    MoveServer(Option<SendGameServer>),
 }
 pub enum ToRunnerMsg {
     RequestServer(ServerKind),
-    MoveServer(Box<dyn SendGameServer>),
+    MoveServer(SendGameServer),
     SetFrequency(f64),
     Stop,
 }
@@ -149,10 +149,10 @@ impl ThreadRunnerHandle {
 }
 
 pub trait ServerMover {
-    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>>;
-    fn emplace_server(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()>;
+    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<SendGameServer>>;
+    fn emplace_server(&mut self, server: SendGameServer) -> anyhow::Result<()>;
 
-    fn take_server_check(&mut self, kind: ServerKind) -> anyhow::Result<Box<dyn SendGameServer>> {
+    fn take_server_check(&mut self, kind: ServerKind) -> anyhow::Result<SendGameServer> {
         self.take_server(kind)?.ok_or_else(|| {
             anyhow::format_err!(
                 "{} server not found in container",
@@ -165,7 +165,7 @@ pub trait ServerMover {
         })
     }
 
-    fn emplace_server_check(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()> {
+    fn emplace_server_check(&mut self, server: SendGameServer) -> anyhow::Result<()> {
         debug_assert!(
             self.take_server(server.server_kind())
                 .context("checking for existing server, expected None, but an error occurred")?
@@ -177,18 +177,18 @@ pub trait ServerMover {
 }
 
 impl ServerMover for MainRunner {
-    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
+    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<SendGameServer>> {
         self.base.container.take_server(kind)
     }
 
-    fn emplace_server(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()> {
+    fn emplace_server(&mut self, server: SendGameServer) -> anyhow::Result<()> {
         self.base.container.emplace_server(server)
     }
 }
 
 impl ServerMover for ThreadRunnerHandle {
     #[allow(irrefutable_let_patterns)]
-    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
+    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<SendGameServer>> {
         self.send(ToRunnerMsg::RequestServer(kind))
             .context("unable to request server from runner thread")?;
         let sent = Instant::now();
@@ -212,7 +212,7 @@ impl ServerMover for ThreadRunnerHandle {
         }
     }
 
-    fn emplace_server(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()> {
+    fn emplace_server(&mut self, server: SendGameServer) -> anyhow::Result<()> {
         self.send(ToRunnerMsg::MoveServer(server))
     }
 }

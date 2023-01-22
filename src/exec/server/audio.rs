@@ -54,18 +54,8 @@ impl GameServer for Server {
         }
         Ok(())
     }
-    fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>> {
-        Ok(Box::new(self))
-    }
-}
-
-impl SendGameServer for Server {
-    fn server_kind(&self) -> super::ServerKind {
-        super::ServerKind::Audio
-    }
-
-    fn downcast_audio(self: Box<Self>) -> anyhow::Result<self::Server> {
-        Ok(*self)
+    fn to_send(self) -> anyhow::Result<SendGameServer> {
+        Ok(SendGameServer::Audio(self))
     }
 }
 

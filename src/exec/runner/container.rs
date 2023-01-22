@@ -10,7 +10,7 @@ pub struct ServerContainer {
 }
 
 impl ServerMover for ServerContainer {
-    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<Box<dyn SendGameServer>>> {
+    fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<SendGameServer>> {
         match kind {
             ServerKind::Audio => self.audio.take().map(|s| s.to_send()).transpose(),
             ServerKind::Draw => self.draw.take().map(|s| s.to_send()).transpose(),
@@ -18,11 +18,11 @@ impl ServerMover for ServerContainer {
         }
     }
 
-    fn emplace_server(&mut self, server: Box<dyn SendGameServer>) -> anyhow::Result<()> {
-        match server.server_kind() {
-            ServerKind::Audio => self.audio = Some(server.downcast_audio()?),
-            ServerKind::Draw => self.draw = Some(server.downcast_draw()?),
-            ServerKind::Update => self.update = Some(server.downcast_update()?),
+    fn emplace_server(&mut self, server: SendGameServer) -> anyhow::Result<()> {
+        match server {
+            SendGameServer::Audio(server) => self.audio = Some(server),
+            SendGameServer::Draw(server) => self.draw = Some(server.make_current()?),
+            SendGameServer::Update(server) => self.update = Some(server),
         }
         Ok(())
     }

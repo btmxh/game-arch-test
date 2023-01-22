@@ -16,9 +16,11 @@ pub struct Args {
     /// Whether or not to select OpenGL config with sRGB capabilities
     #[arg(long)]
     pub gl_disable_srgb: bool,
+    /// Log level, use this to turn off unnecessary log messages
     #[arg(long, default_value_t = Level::TRACE)]
     pub log_level: Level,
-    #[arg(long)]
+    /// Log file, can be relative or absolute path
+    #[arg(long, default_value = "amk.log")]
     pub log_file: Option<String>,
     /// Whether or not to block the event loop on certain events like
     /// `RedrawRequested` or `Resize`. This should be turned on or off
@@ -27,11 +29,11 @@ pub struct Args {
     #[arg(long, action = clap::ArgAction::Set, default_value_t = default_block_event_loop())]
     pub block_event_loop: bool,
     /// Whether or not to throttle while handling Resize events.
-    /// 
+    ///
     /// This should be used on platforms with the flag `block_event_loop`
     /// set to false (X11, etc.). Otherwise, all Resize events would then
     /// be handled, making the draw thread lags back.
-    /// 
+    ///
     /// On platforms with the flag `block_event_loop`, enabling this will
     /// make the resizing process somewhat laggy and introduce rendering
     /// artifacts (only when resize).

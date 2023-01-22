@@ -187,12 +187,12 @@ impl Server {
 }
 
 impl GameServer for Server {
-    fn to_send(self) -> anyhow::Result<Box<dyn SendGameServer>> {
+    fn to_send(self) -> anyhow::Result<SendGameServer> {
         let gl_context = self
             .gl_context
             .make_not_current()
             .context("unable to make OpenGL context not current")?;
-        Ok(Box::new(SendServer {
+        Ok(SendGameServer::Draw(SendServer {
             base: self.base,
             gl_config: self.gl_config,
             gl_context,
@@ -221,12 +221,8 @@ impl GameServer for Server {
     }
 }
 
-impl SendGameServer for SendServer {
-    fn server_kind(&self) -> super::ServerKind {
-        super::ServerKind::Draw
-    }
-
-    fn downcast_draw(self: Box<Self>) -> anyhow::Result<Server> {
+impl SendServer {
+    pub fn make_current(self) -> anyhow::Result<Server> {
         let gl_surface = unsafe {
             self.gl_display
                 .create_window_surface(

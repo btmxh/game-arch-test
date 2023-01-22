@@ -181,10 +181,6 @@ impl DrawContext {
     pub fn draw(&mut self, root_scene: &mut DrawRoot, runner_frequency: f64) -> anyhow::Result<()> {
         self.base.run("Draw", runner_frequency);
         self.process_messages(root_scene)?;
-        unsafe {
-            gl::ClearColor(0.0, 0.0, 0.2, 0.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-        }
         root_scene.draw(self)?;
         self.gl_surface.swap_buffers(&self.gl_context)?;
         Ok(())

@@ -15,7 +15,6 @@ use self::wrappers::{
 pub mod blur;
 pub mod debug_callback;
 pub mod quad_renderer;
-pub mod tree;
 pub mod wrappers;
 
 #[derive(Debug)]

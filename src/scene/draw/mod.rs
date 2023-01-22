@@ -18,9 +18,9 @@ impl DrawRoot {
         })
     }
 
-    pub fn draw(&mut self, server: &mut DrawContext) -> anyhow::Result<()> {
-        self.clear.draw(server);
-        self.background.draw(server)?;
+    pub fn draw(&mut self, context: &mut DrawContext) -> anyhow::Result<()> {
+        self.clear.draw(context);
+        self.background.draw(context)?;
         Ok(())
     }
 }

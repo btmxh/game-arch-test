@@ -137,13 +137,13 @@ impl BlurRenderer {
         }
 
         let slf = self.clone();
-        GameServerExecutor::execute_draw_event(draw, move |server, _| {
-            let program = slf.program.get(server);
-            let vertex_array = slf.vertex_array.get(server);
+        GameServerExecutor::execute_draw_event(draw, move |context, _| {
+            let program = slf.program.get(context);
+            let vertex_array = slf.vertex_array.get(context);
             let framebuffers = slf
                 .framebuffers
                 .iter()
-                .map(|f| f.framebuffer.get(server))
+                .map(|f| f.framebuffer.get(context))
                 .collect::<Vec<_>>();
 
             vertex_array.bind();
@@ -162,7 +162,7 @@ impl BlurRenderer {
                 gl::Uniform2f(loc_pixel, 1.0 / framebuffer_size.width as f32, 0.0);
                 gl::Uniform1f(loc_lod, lod);
                 gl::ActiveTexture(gl::TEXTURE0);
-                texture.get(server).bind();
+                texture.get(context).bind();
                 framebuffers[0].bind();
                 gl::Clear(gl::COLOR_BUFFER_BIT);
                 gl::Viewport(
@@ -175,7 +175,7 @@ impl BlurRenderer {
                 gl::Uniform2f(loc_pixel, 0.0, 1.0 / framebuffer_size.height as f32);
                 gl::Uniform1f(loc_lod, 0.0);
                 gl::ActiveTexture(gl::TEXTURE0);
-                slf.framebuffers[0].texture.get(server).bind();
+                slf.framebuffers[0].texture.get(context).bind();
                 framebuffers[1].bind();
                 gl::Clear(gl::COLOR_BUFFER_BIT);
                 gl::Viewport(

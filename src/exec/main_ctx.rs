@@ -65,13 +65,13 @@ impl MainContext {
         block: bool,
     ) -> anyhow::Result<()> {
         if block {
-            executor.execute_draw_sync(&mut self.channels.draw, move |server, _| {
-                server.resize(size);
+            executor.execute_draw_sync(&mut self.channels.draw, move |context, _| {
+                context.resize(size);
                 Ok(())
             })?;
         } else {
-            GameServerExecutor::execute_draw_event(&mut self.channels.draw, move |server, _| {
-                server.resize(size);
+            GameServerExecutor::execute_draw_event(&mut self.channels.draw, move |context, _| {
+                context.resize(size);
                 []
             })?;
         }

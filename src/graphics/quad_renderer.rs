@@ -65,9 +65,9 @@ impl QuadRenderer {
         })
     }
 
-    pub fn draw(&self, server: &DrawContext, texture: GLuint, bounds: &[vec2; 2]) {
-        let vao = self.vertex_array.get(server);
-        let program = self.program.get(server);
+    pub fn draw(&self, context: &DrawContext, texture: GLuint, bounds: &[vec2; 2]) {
+        let vao = self.vertex_array.get(context);
+        let program = self.program.get(context);
 
         unsafe {
             vao.bind();

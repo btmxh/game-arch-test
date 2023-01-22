@@ -33,12 +33,12 @@ impl GLHandleTrait for VertexArrayTrait {
         unsafe { gl::DeleteVertexArrays(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
 
-    fn get_container_mut(server: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
-        Some(&mut server.handles.vertex_arrays)
+    fn get_container_mut(context: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
+        Some(&mut context.handles.vertex_arrays)
     }
 
-    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
-        Some(&server.handles.vertex_arrays)
+    fn get_container(context: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
+        Some(&context.handles.vertex_arrays)
     }
 }
 

@@ -70,14 +70,14 @@ impl Background {
             let _width = img.width();
             let _height = img.height();
 
-            GameServerExecutor::execute_draw_event(&channel, move |server, _| {
-                let tex_handle = test_texture.get(server);
+            GameServerExecutor::execute_draw_event(&channel, move |context, root| {
+                let tex_handle = test_texture.get(context);
                 tex_handle.bind();
                 unsafe {
                     gl::TexImage2D(
                         gl::TEXTURE_2D,
                         0,
-                        if server.gl_config.srgb_capable() {
+                        if context.gl_config.srgb_capable() {
                             gl::SRGB8_ALPHA8.try_into().unwrap()
                         } else {
                             gl::RGBA8.try_into().unwrap()

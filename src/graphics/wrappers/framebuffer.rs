@@ -44,12 +44,12 @@ impl GLHandleTrait for FramebufferTrait {
         unsafe { gl::DeleteFramebuffers(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
 
-    fn get_container_mut(server: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
-        Some(&mut server.handles.framebuffers)
+    fn get_container_mut(context: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
+        Some(&mut context.handles.framebuffers)
     }
 
-    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
-        Some(&server.handles.framebuffers)
+    fn get_container(context: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
+        Some(&context.handles.framebuffers)
     }
 }
 
@@ -80,21 +80,21 @@ impl DefaultTextureFramebuffer {
 
     fn resize_in_server(
         &self,
-        server: &mut DrawContext,
+        context: &mut DrawContext,
         size: PhysicalSize<u32>,
     ) -> anyhow::Result<()> {
         let (framebuffer, texture) = match self.size {
             Some(sz) if size == sz => return Ok(()),
-            None => (self.framebuffer.get(server), self.texture.get(server)),
+            None => (self.framebuffer.get(context), self.texture.get(context)),
             _ => {
-                let texture = server
+                let texture = context
                     .handles
                     .textures
                     .replace(&self.texture, |old_texture| {
                         Texture::new_args(old_texture.name(), TextureType::E2D)
                     })?;
 
-                (self.framebuffer.get(server), texture)
+                (self.framebuffer.get(context), texture)
             }
         };
         unsafe {
@@ -103,7 +103,7 @@ impl DefaultTextureFramebuffer {
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,
-                if server.gl_config.srgb_capable() {
+                if context.gl_config.srgb_capable() {
                     gl::SRGB8_ALPHA8.try_into().unwrap()
                 } else {
                     gl::RGBA8.try_into().unwrap()
@@ -149,8 +149,8 @@ impl DefaultTextureFramebuffer {
 
         let slf = self.clone();
         self.size = Some(new_size);
-        GameServerExecutor::execute_draw_event(draw, move |server, _| {
-            slf.resize_in_server(server, new_size)
+        GameServerExecutor::execute_draw_event(draw, move |context, _| {
+            slf.resize_in_server(context, new_size)
                 .err()
                 .map(GameUserEvent::Error)
         })?;

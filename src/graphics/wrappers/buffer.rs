@@ -41,12 +41,12 @@ impl GLHandleTrait<BufferTarget> for BufferTrait {
     }
 
     fn get_container_mut(
-        server: &mut DrawContext,
+        context: &mut DrawContext,
     ) -> Option<&mut GLHandleContainer<Self, BufferTarget>> {
-        Some(&mut server.handles.buffers)
+        Some(&mut context.handles.buffers)
     }
 
-    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, BufferTarget>> {
-        Some(&server.handles.buffers)
+    fn get_container(context: &DrawContext) -> Option<&GLHandleContainer<Self, BufferTarget>> {
+        Some(&context.handles.buffers)
     }
 }

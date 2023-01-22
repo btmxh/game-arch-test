@@ -89,8 +89,8 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> Drop for GLGfxHandleInne
         let handle = self.handle;
         self.sender
             .send(draw::RecvMsg::ExecuteEvent(
-                Box::new(move |server, _| {
-                    if let Some(container) = T::get_container_mut(server) {
+                Box::new(move |context, _| {
+                    if let Some(container) = T::get_container_mut(context) {
                         unsafe { container.remove(&handle) };
                     }
 
@@ -127,8 +127,8 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
         let slf = unsafe { Self::new_uninit(draw) };
         GameServerExecutor::execute_draw_event(
             draw,
-            enclose!((slf) move |server, _| {
-                if let Some(container) = T::get_container_mut(server) {
+            enclose!((slf) move |context, _| {
+                if let Some(container) = T::get_container_mut(context) {
                     return GLHandle::<T, A>::new_args(name, args)
                         .map(|handle| container.insert(&slf, handle))
                         .err()
@@ -141,12 +141,12 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
         Ok(slf)
     }
 
-    pub fn try_get(&self, server: &DrawContext) -> Option<GLHandle<T, A>> {
-        T::get_container(server).and_then(|c| c.get(self))
+    pub fn try_get(&self, context: &DrawContext) -> Option<GLHandle<T, A>> {
+        T::get_container(context).and_then(|c| c.get(self))
     }
 
-    pub fn get(&self, server: &DrawContext) -> GLHandle<T, A> {
-        self.try_get(server)
+    pub fn get(&self, context: &DrawContext) -> GLHandle<T, A> {
+        self.try_get(context)
             .expect("get() called on a null GLHandle")
     }
 }

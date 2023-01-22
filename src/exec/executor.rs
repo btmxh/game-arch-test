@@ -177,7 +177,7 @@ impl GameServerExecutor {
             callback(&mut server.context, &mut server.root_scene)
         } else {
             channel.send(draw::RecvMsg::ExecuteSync(Box::new(
-                move |server, root_scene| Box::new(callback(server, root_scene)),
+                move |context, root_scene| Box::new(callback(context, root_scene)),
             )))?;
             if let draw::SendMsg::ExecuteSyncReturn(result) = channel.recv()? {
                 Ok(result
@@ -201,7 +201,7 @@ impl GameServerExecutor {
         F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
     {
         channel.send(draw::RecvMsg::ExecuteEvent(Box::new(
-            move |server, root_scene| Box::new(callback(server, root_scene).into_iter()),
+            move |context, root_scene| Box::new(callback(context, root_scene).into_iter()),
         )))
     }
 

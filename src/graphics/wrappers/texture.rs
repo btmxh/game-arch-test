@@ -39,12 +39,12 @@ impl GLHandleTrait<TextureType> for TextureTrait {
     }
 
     fn get_container_mut(
-        server: &mut DrawContext,
+        context: &mut DrawContext,
     ) -> Option<&mut GLHandleContainer<Self, TextureType>> {
-        Some(&mut server.handles.textures)
+        Some(&mut context.handles.textures)
     }
 
-    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, TextureType>> {
-        Some(&server.handles.textures)
+    fn get_container(context: &DrawContext) -> Option<&GLHandleContainer<Self, TextureType>> {
+        Some(&context.handles.textures)
     }
 }

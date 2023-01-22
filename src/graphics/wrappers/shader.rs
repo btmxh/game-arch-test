@@ -62,12 +62,12 @@ impl GLHandleTrait for ProgramTrait {
 
     fn bind(_: GLuint, _: ()) {}
 
-    fn get_container_mut(server: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
-        Some(&mut server.handles.programs)
+    fn get_container_mut(context: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
+        Some(&mut context.handles.programs)
     }
 
-    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
-        Some(&server.handles.programs)
+    fn get_container(context: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
+        Some(&context.handles.programs)
     }
 }
 
@@ -166,8 +166,8 @@ impl ProgramHandle {
         let handle = unsafe { Self::new_uninit(draw) };
         GameServerExecutor::execute_draw_event(
             draw,
-            enclose!((handle) move |server, _| {
-                server.handles.create_vf_program(name, &handle, vertex, fragment)
+            enclose!((handle) move |context, _| {
+                context.handles.create_vf_program(name, &handle, vertex, fragment)
                     .err()
                     .map(GameUserEvent::Error)
             }),

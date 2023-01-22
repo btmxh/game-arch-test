@@ -16,12 +16,14 @@ use crate::{
         quad_renderer::QuadRenderer,
         wrappers::texture::{TextureHandle, TextureType},
     },
+    utils::error::ResultExt,
 };
 
 pub struct Background {
-    pub test_texture: TextureHandle,
     pub blur: BlurRenderer,
     pub renderer: QuadRenderer,
+    pub texture: TextureHandle,
+    pub texture_loaded: bool,
 }
 
 impl Background {
@@ -33,7 +35,7 @@ impl Background {
             .context("quad renderer initialization failed")?;
         let blur = BlurRenderer::new(main_ctx.dummy_vao.clone(), &mut main_ctx.channels.draw)
             .context("blur renderer initialization failed")?;
-        let test_texture = Self::init_test_texture(
+        let texture = Self::init_test_texture(
             executor,
             &mut main_ctx.channels,
             blur.clone(),
@@ -41,9 +43,10 @@ impl Background {
         )
         .context("unable to initialize test texture")?;
         Ok(Self {
-            test_texture,
+            texture,
             blur,
             renderer,
+            texture_loaded: false,
         })
     }
 
@@ -51,8 +54,8 @@ impl Background {
     fn init_test_texture(
         executor: &mut GameServerExecutor,
         channels: &mut ServerChannels,
-        _blur: BlurRenderer,
-        _renderer: QuadRenderer,
+        blur: BlurRenderer,
+        renderer: QuadRenderer,
     ) -> anyhow::Result<TextureHandle> {
         let test_texture =
             TextureHandle::new_args(&mut channels.draw, "test texture", TextureType::E2D)?;
@@ -67,8 +70,6 @@ impl Background {
             if token.is_cancelled() {
                 return Ok(())
             }
-            let _width = img.width();
-            let _height = img.height();
 
             GameServerExecutor::execute_draw_event(&channel, move |context, root| {
                 let tex_handle = test_texture.get(context);
@@ -102,29 +103,7 @@ impl Background {
                     gl::GenerateMipmap(gl::TEXTURE_2D);
                 };
 
-                // server.set_draw_callback(move |server| {
-                //     if let Some(texture) = blur.output_texture_handle().try_get(server) {
-                //         let viewport_size = server.display_size;
-                //         let vw = viewport_size.width.get() as f32;
-                //         let vh = viewport_size.height.get() as f32;
-                //         let tw = width as f32;
-                //         let th = height as f32;
-                //         let var = vw / vh;
-                //         let tar = tw / th;
-                //         let (hw, hh) = if var < tar {
-                //             (0.5 * var / tar, 0.5)
-                //         } else {
-                //             (0.5, 0.5 * tar / var)
-                //         };
-                //         renderer.draw(
-                //             server,
-                //             *texture,
-                //             &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                //         );
-                //     }
-
-                //     Ok(())
-                // });
+                root.initialize_background(blur, renderer, PhysicalSize { width: img.width(), height: img.height() }).log_error();
 
                 [GameUserEvent::Execute(Box::new(|ctx, _, root| {
                     root.background.update_blur_texture(ctx, None, 32.0)
@@ -144,7 +123,7 @@ impl Background {
         self.blur.redraw(
             &mut main_ctx.channels.draw,
             size.unwrap_or_else(|| main_ctx.display.get_size()),
-            self.test_texture.clone(),
+            self.texture.clone(),
             0.0,
             blur_factor,
         )?;
@@ -159,14 +138,16 @@ impl Background {
     ) -> anyhow::Result<bool> {
         match event {
             GameEvent::UserEvent(GameUserEvent::CheckedResize(PhysicalSize { width, height })) => {
-                self.update_blur_texture(
-                    main_ctx,
-                    Some(PhysicalSize {
-                        width: width.get(),
-                        height: height.get(),
-                    }),
-                    32.0,
-                )?;
+                if self.texture_loaded {
+                    self.update_blur_texture(
+                        main_ctx,
+                        Some(PhysicalSize {
+                            width: width.get(),
+                            height: height.get(),
+                        }),
+                        32.0,
+                    )?;
+                }
             }
 
             _ => {}

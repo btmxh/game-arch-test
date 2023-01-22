@@ -1,6 +1,6 @@
 use gl::types::{GLenum, GLuint};
 
-use crate::exec::server::draw;
+use crate::{exec::server::draw, graphics::context::DrawContext};
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
@@ -33,11 +33,11 @@ impl GLHandleTrait for VertexArrayTrait {
         unsafe { gl::DeleteVertexArrays(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
 
-    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
+    fn get_container_mut(server: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
         Some(&mut server.handles.vertex_arrays)
     }
 
-    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>> {
+    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
         Some(&server.handles.vertex_arrays)
     }
 }

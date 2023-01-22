@@ -7,7 +7,7 @@ use crate::{
     utils::mpsc::{Receiver, Sender},
 };
 
-use super::{BaseGameServer, GameServer, GameServerChannel, SendGameServer, GameServerSendChannel};
+use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 
 pub enum SendMsg {
     Dispatch(DispatchMsg),

@@ -1,8 +1,7 @@
 use std::{num::NonZeroU32, time::Duration};
 
 use anyhow::Context;
-use glutin::{prelude::GlConfig, surface::SwapInterval};
-use image::EncodableLayout;
+use glutin::surface::SwapInterval;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -12,30 +11,19 @@ use winit::{
 use crate::{
     display::Display,
     events::{GameEvent, GameUserEvent},
-    graphics::{
-        blur::BlurRenderer,
-        quad_renderer::QuadRenderer,
-        wrappers::{
-            framebuffer::DefaultTextureFramebuffer,
-            texture::{TextureHandle, TextureType},
-            vertex_array::VertexArrayHandle,
-        },
-    },
-    utils::{args::args, clock::debug_get_time, enclose::enclose, error::ResultExt},
+    graphics::wrappers::vertex_array::VertexArrayHandle,
+    scene::main::EventRoot,
+    utils::{args::args, clock::debug_get_time, error::ResultExt},
 };
 
 use super::{
     dispatch::{DispatchId, DispatchList},
     executor::GameServerExecutor,
-    server::{GameServerSendChannel, ServerChannels},
+    server::ServerChannels,
     task::CancellationToken,
 };
 
 pub struct MainContext {
-    pub test_texture: TextureHandle,
-    pub blur: BlurRenderer,
-    pub renderer: QuadRenderer,
-    pub screen_framebuffer: DefaultTextureFramebuffer,
     pub dummy_vao: VertexArrayHandle,
     pub frequency_profiling: bool,
     pub vsync: bool,
@@ -51,37 +39,19 @@ pub struct MainContext {
 
 impl MainContext {
     pub fn new(
-        executor: &mut GameServerExecutor,
+        _executor: &mut GameServerExecutor,
         display: Display,
         event_loop_proxy: EventLoopProxy<GameUserEvent>,
         mut channels: ServerChannels,
     ) -> anyhow::Result<Self> {
-        let dummy_vao = VertexArrayHandle::new(&mut channels.draw, "dummy vertex array")?;
-        let renderer = QuadRenderer::new(dummy_vao.clone(), &mut channels.draw)
-            .context("quad renderer initialization failed")?;
-        let blur = BlurRenderer::new(dummy_vao.clone(), &mut channels.draw)
-            .context("blur renderer initialization failed")?;
-
-        let mut screen_framebuffer =
-            DefaultTextureFramebuffer::new(&mut channels.draw, "screen framebuffer")
-                .context("screen framebuffer initialization failed")?;
-        screen_framebuffer.resize(&mut channels.draw, display.get_size())?;
-
-        let test_texture =
-            Self::init_test_texture(executor, &mut channels, blur.clone(), renderer.clone())?;
-
         Ok(Self {
-            renderer,
-            blur,
-            dummy_vao,
-            test_texture,
+            dummy_vao: VertexArrayHandle::new(&mut channels.draw, "dummy vertex array")?,
             display,
             event_loop_proxy,
             dispatch_list: DispatchList::new(),
             channels,
             vsync: true,
             frequency_profiling: false,
-            screen_framebuffer,
             resize_should_wait: false,
             resize_size: None,
         })
@@ -90,120 +60,27 @@ impl MainContext {
     fn resize(
         &mut self,
         executor: &mut GameServerExecutor,
+        root_scene: &mut EventRoot,
         size: PhysicalSize<NonZeroU32>,
         block: bool,
     ) -> anyhow::Result<()> {
         if block {
-            executor.execute_draw_sync(&mut self.channels.draw, move |server| {
+            executor.execute_draw_sync(&mut self.channels.draw, move |server, _| {
                 server.resize(size);
                 Ok(())
             })?;
         } else {
-            GameServerExecutor::execute_draw_event(&mut self.channels.draw, move |server| {
+            GameServerExecutor::execute_draw_event(&mut self.channels.draw, move |server, _| {
                 server.resize(size);
                 []
             })?;
         }
-        self.update_blur_texture(32.0)?;
-        Ok(())
-    }
-
-    #[allow(unused_mut)]
-    fn init_test_texture(
-        executor: &mut GameServerExecutor,
-        channels: &mut ServerChannels,
-        blur: BlurRenderer,
-        renderer: QuadRenderer,
-    ) -> anyhow::Result<TextureHandle> {
-        let test_texture =
-            TextureHandle::new_args(&mut channels.draw, "test texture", TextureType::E2D)?;
-
-        let channel = channels.draw.clone_sender();
-        executor.execute_blocking_task(enclose!((test_texture) move |token| {
-            let img = image::io::Reader::open("BG.jpg")
-                .context("unable to load test texture")?
-                .decode()
-                .context("unable to decode test texture")?
-                .into_rgba8();
-            if token.is_cancelled() {
-                return Ok(())
-            }
-            let width = img.width();
-            let height = img.height();
-
-            GameServerExecutor::execute_draw_event(&channel, move |server| {
-                let tex_handle = test_texture.get(server);
-                tex_handle.bind();
-                unsafe {
-                    gl::TexImage2D(
-                        gl::TEXTURE_2D,
-                        0,
-                        if server.gl_config.srgb_capable() {
-                            gl::SRGB8_ALPHA8.try_into().unwrap()
-                        } else {
-                            gl::RGBA8.try_into().unwrap()
-                        },
-                        img.width().try_into().unwrap(),
-                        img.height().try_into().unwrap(),
-                        0,
-                        gl::RGBA,
-                        gl::UNSIGNED_BYTE,
-                        img.as_bytes().as_ptr() as *const _,
-                    );
-                    gl::TexParameteri(
-                        gl::TEXTURE_2D,
-                        gl::TEXTURE_MIN_FILTER,
-                        gl::LINEAR_MIPMAP_LINEAR.try_into().unwrap(),
-                    );
-                    gl::TexParameteri(
-                        gl::TEXTURE_2D,
-                        gl::TEXTURE_MAG_FILTER,
-                        gl::LINEAR.try_into().unwrap(),
-                    );
-                    gl::GenerateMipmap(gl::TEXTURE_2D);
-                };
-
-                server.set_draw_callback(move |server| {
-                    if let Some(texture) = blur.output_texture_handle().try_get(server) {
-                        let viewport_size = server.display_size;
-                        let vw = viewport_size.width.get() as f32;
-                        let vh = viewport_size.height.get() as f32;
-                        let tw = width as f32;
-                        let th = height as f32;
-                        let var = vw / vh;
-                        let tar = tw / th;
-                        let (hw, hh) = if var < tar {
-                            (0.5 * var / tar, 0.5)
-                        } else {
-                            (0.5, 0.5 * tar / var)
-                        };
-                        renderer.draw(
-                            server,
-                            *texture,
-                            &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                        );
-                    }
-
-                    Ok(())
-                });
-
-                [GameUserEvent::Execute(Box::new(|ctx| {
-                    ctx.update_blur_texture(32.0)
-                }))]
-            })?;
-            Ok(())
-        }));
-        Ok(test_texture)
-    }
-
-    fn update_blur_texture(&mut self, blur_factor: f32) -> anyhow::Result<()> {
-        self.blur.redraw(
-            &mut self.channels.draw,
-            self.display.get_size(),
-            self.test_texture.clone(),
-            0.0,
-            blur_factor,
+        root_scene.handle_event(
+            executor,
+            self,
+            GameEvent::UserEvent(GameUserEvent::CheckedResize(size)),
         )?;
+        // self.update_blur_texture(32.0)?;
         Ok(())
     }
 
@@ -211,6 +88,7 @@ impl MainContext {
     pub fn handle_event(
         &mut self,
         executor: &mut GameServerExecutor,
+        root_scene: &mut EventRoot,
         event: GameEvent<'_>,
     ) -> anyhow::Result<()> {
         match event {
@@ -234,8 +112,8 @@ impl MainContext {
                             .run_single()
                             .expect("error running main runner");
                     } else {
-                        executor.execute_draw_sync(&mut self.channels.draw, |_| Ok(()))?;
-                        executor.execute_draw_sync(&mut self.channels.draw, |_| Ok(()))?;
+                        executor.execute_draw_sync(&mut self.channels.draw, |_, _| Ok(()))?;
+                        executor.execute_draw_sync(&mut self.channels.draw, |_, _| Ok(()))?;
                     }
                 }
             }
@@ -255,13 +133,17 @@ impl MainContext {
                         fn resize_timeout_func(
                             slf: &mut MainContext,
                             executor: &mut GameServerExecutor,
+                            root_scene: &mut EventRoot,
                         ) -> anyhow::Result<()> {
                             if let Some(size) = slf.resize_size.take() {
-                                slf.resize(executor, size, false)?;
+                                slf.resize(executor, root_scene, size, false)?;
                                 slf.resize_size = None;
-                                slf.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
-                                    resize_timeout_func(slf, executor)
-                                })?;
+                                slf.set_timeout(
+                                    THROTTLE_DURATION,
+                                    |slf, executor, root_scene, _| {
+                                        resize_timeout_func(slf, executor, root_scene)
+                                    },
+                                )?;
                             } else {
                                 slf.resize_should_wait = false;
                             }
@@ -272,14 +154,14 @@ impl MainContext {
                         if self.resize_should_wait {
                             self.resize_size = Some(size);
                         } else {
-                            self.resize(executor, size, false)?;
+                            self.resize(executor, root_scene, size, false)?;
                             self.resize_should_wait = true;
-                            self.set_timeout(THROTTLE_DURATION, |slf, executor, _| {
-                                resize_timeout_func(slf, executor)
+                            self.set_timeout(THROTTLE_DURATION, |slf, executor, root_scene, _| {
+                                resize_timeout_func(slf, executor, root_scene)
                             })?;
                         }
                     } else {
-                        self.resize(executor, size, !args().block_event_loop)?;
+                        self.resize(executor, root_scene, size, !args().block_event_loop)?;
                     }
                 }
             }
@@ -329,7 +211,7 @@ impl MainContext {
                     SwapInterval::DontWait
                 };
                 if executor
-                    .execute_draw_sync(&mut self.channels.draw, move |s| {
+                    .execute_draw_sync(&mut self.channels.draw, move |s, _| {
                         s.set_swap_interval(interval)?;
                         Ok(Box::new(()))
                     })
@@ -361,7 +243,7 @@ impl MainContext {
                 let time = debug_get_time();
                 let test_duration = 5.0;
                 tracing::info!("{}", time);
-                self.set_timeout(Duration::from_secs_f64(test_duration), move |_, _, _| {
+                self.set_timeout(Duration::from_secs_f64(test_duration), move |_, _, _, _| {
                     tracing::info!("delay: {}s", debug_get_time() - time - test_duration);
                     Ok(())
                 })?;
@@ -369,12 +251,12 @@ impl MainContext {
 
             Event::UserEvent(GameUserEvent::Dispatch(msg)) => {
                 for (id, d) in self.dispatch_list.handle_dispatch_msg(msg).into_iter() {
-                    d(self, executor, id)?;
+                    d(self, executor, root_scene, id)?;
                 }
             }
 
             Event::UserEvent(GameUserEvent::Execute(callback)) => {
-                callback(self).log_error();
+                callback(self, executor, root_scene).log_error();
             }
 
             Event::UserEvent(GameUserEvent::Error(e)) => {
@@ -392,7 +274,12 @@ impl MainContext {
         callback: F,
     ) -> anyhow::Result<(DispatchId, CancellationToken)>
     where
-        F: FnOnce(&mut MainContext, &mut GameServerExecutor, DispatchId) -> anyhow::Result<()>
+        F: FnOnce(
+                &mut MainContext,
+                &mut GameServerExecutor,
+                &mut EventRoot,
+                DispatchId,
+            ) -> anyhow::Result<()>
             + 'static,
     {
         let cancel_token = CancellationToken::new();

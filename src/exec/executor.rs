@@ -7,7 +7,12 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::{events::GameUserEvent, utils::error::ResultExt};
+use crate::{
+    events::GameUserEvent,
+    graphics::context::DrawContext,
+    scene::{draw::DrawRoot, main::EventRoot},
+    utils::error::ResultExt,
+};
 
 use super::{
     main_ctx::MainContext,
@@ -43,11 +48,7 @@ impl GameServerExecutor {
         }
     }
 
-    fn move_server_to(
-        &mut self,
-        to: RunnerId,
-        server: SendGameServer,
-    ) -> anyhow::Result<()> {
+    fn move_server_to(&mut self, to: RunnerId, server: SendGameServer) -> anyhow::Result<()> {
         match to {
             MAIN_RUNNER_ID => self.main_runner.emplace_server_check(server),
             _ => self.thread_runners[usize::from(to)]
@@ -121,12 +122,14 @@ impl GameServerExecutor {
         mut self,
         event_loop: EventLoop<GameUserEvent>,
         mut main_ctx: MainContext,
+        mut root_scene: EventRoot,
         guard: Option<WorkerGuard>,
     ) -> ! {
         event_loop.run(move |event, _target, control_flow| {
             // guarantee drop order
             fn unused<T>(_: &T) {}
             unused(&guard);
+            unused(&root_scene);
             unused(&main_ctx);
             unused(&self);
             match event {
@@ -140,7 +143,7 @@ impl GameServerExecutor {
                 Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
 
                 event => main_ctx
-                    .handle_event(&mut self, event)
+                    .handle_event(&mut self, &mut root_scene, event)
                     .expect("error handling events"),
             }
 
@@ -168,14 +171,14 @@ impl GameServerExecutor {
     ) -> anyhow::Result<R>
     where
         R: Send + 'static,
-        F: FnOnce(&mut draw::Server) -> anyhow::Result<R> + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> anyhow::Result<R> + Send + 'static,
     {
         if let Some(server) = self.main_runner.base.container.draw.as_mut() {
-            callback(server)
+            callback(&mut server.context, &mut server.root_scene)
         } else {
-            channel.send(draw::RecvMsg::ExecuteSync(Box::new(move |server| {
-                Box::new(callback(server))
-            })))?;
+            channel.send(draw::RecvMsg::ExecuteSync(Box::new(
+                move |server, root_scene| Box::new(callback(server, root_scene)),
+            )))?;
             if let draw::SendMsg::ExecuteSyncReturn(result) = channel.recv()? {
                 Ok(result
                     .downcast::<anyhow::Result<R>>()
@@ -195,11 +198,11 @@ impl GameServerExecutor {
     ) -> anyhow::Result<()>
     where
         R: IntoIterator<Item = GameUserEvent> + Send + 'static,
-        F: FnOnce(&mut draw::Server) -> R + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
     {
-        channel.send(draw::RecvMsg::ExecuteEvent(Box::new(move |server| {
-            Box::new(callback(server).into_iter())
-        })))
+        channel.send(draw::RecvMsg::ExecuteEvent(Box::new(
+            move |server, root_scene| Box::new(callback(server, root_scene).into_iter()),
+        )))
     }
 
     pub fn execute_blocking_task<F>(&mut self, f: F) -> TaskHandle

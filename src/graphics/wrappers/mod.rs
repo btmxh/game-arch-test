@@ -21,7 +21,7 @@ use crate::{
     utils::error::ResultExt,
 };
 
-use super::GfxHandle;
+use super::{context::DrawContext, GfxHandle};
 
 pub mod buffer;
 pub mod framebuffer;
@@ -38,14 +38,14 @@ pub trait GLHandleTrait<A: Clone = ()> {
         handles.iter().for_each(|&handle| Self::delete(handle));
     }
 
-    fn get_container_mut(_server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, A>>
+    fn get_container_mut(_server: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, A>>
     where
         Self: Sized,
     {
         None
     }
 
-    fn get_container(_server: &draw::Server) -> Option<&GLHandleContainer<Self, A>>
+    fn get_container(_server: &DrawContext) -> Option<&GLHandleContainer<Self, A>>
     where
         Self: Sized,
     {
@@ -89,7 +89,7 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> Drop for GLGfxHandleInne
         let handle = self.handle;
         self.sender
             .send(draw::RecvMsg::ExecuteEvent(
-                Box::new(move |server| {
+                Box::new(move |server, _| {
                     if let Some(container) = T::get_container_mut(server) {
                         unsafe { container.remove(&handle) };
                     }
@@ -127,7 +127,7 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
         let slf = unsafe { Self::new_uninit(draw) };
         GameServerExecutor::execute_draw_event(
             draw,
-            enclose!((slf) move |server| {
+            enclose!((slf) move |server, _| {
                 if let Some(container) = T::get_container_mut(server) {
                     return GLHandle::<T, A>::new_args(name, args)
                         .map(|handle| container.insert(&slf, handle))
@@ -141,11 +141,11 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
         Ok(slf)
     }
 
-    pub fn try_get(&self, server: &draw::Server) -> Option<GLHandle<T, A>> {
+    pub fn try_get(&self, server: &DrawContext) -> Option<GLHandle<T, A>> {
         T::get_container(server).and_then(|c| c.get(self))
     }
 
-    pub fn get(&self, server: &draw::Server) -> GLHandle<T, A> {
+    pub fn get(&self, server: &DrawContext) -> GLHandle<T, A> {
         self.try_get(server)
             .expect("get() called on a null GLHandle")
     }

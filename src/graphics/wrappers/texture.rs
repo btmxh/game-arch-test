@@ -1,6 +1,6 @@
 use gl::types::{GLenum, GLuint};
 
-use crate::exec::server::draw;
+use crate::{exec::server::draw, graphics::context::DrawContext};
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
@@ -39,12 +39,12 @@ impl GLHandleTrait<TextureType> for TextureTrait {
     }
 
     fn get_container_mut(
-        server: &mut draw::Server,
+        server: &mut DrawContext,
     ) -> Option<&mut GLHandleContainer<Self, TextureType>> {
         Some(&mut server.handles.textures)
     }
 
-    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, TextureType>> {
+    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, TextureType>> {
         Some(&server.handles.textures)
     }
 }

@@ -1,6 +1,6 @@
 use gl::types::{GLenum, GLuint};
 
-use crate::exec::server::draw;
+use crate::{exec::server::draw, graphics::context::DrawContext};
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
 
@@ -41,12 +41,12 @@ impl GLHandleTrait<BufferTarget> for BufferTrait {
     }
 
     fn get_container_mut(
-        server: &mut draw::Server,
+        server: &mut DrawContext,
     ) -> Option<&mut GLHandleContainer<Self, BufferTarget>> {
         Some(&mut server.handles.buffers)
     }
 
-    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, BufferTarget>> {
+    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, BufferTarget>> {
         Some(&server.handles.buffers)
     }
 }

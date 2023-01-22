@@ -7,6 +7,7 @@ use winit::dpi::PhysicalSize;
 use crate::{
     events::GameUserEvent,
     exec::{executor::GameServerExecutor, server::draw},
+    graphics::context::DrawContext,
 };
 
 use super::{
@@ -43,11 +44,11 @@ impl GLHandleTrait for FramebufferTrait {
         unsafe { gl::DeleteFramebuffers(handles.len().try_into().unwrap(), handles.as_ptr()) }
     }
 
-    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
+    fn get_container_mut(server: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
         Some(&mut server.handles.framebuffers)
     }
 
-    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>> {
+    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
         Some(&server.handles.framebuffers)
     }
 }
@@ -79,7 +80,7 @@ impl DefaultTextureFramebuffer {
 
     fn resize_in_server(
         &self,
-        server: &mut draw::Server,
+        server: &mut DrawContext,
         size: PhysicalSize<u32>,
     ) -> anyhow::Result<()> {
         let (framebuffer, texture) = match self.size {
@@ -148,7 +149,7 @@ impl DefaultTextureFramebuffer {
 
         let slf = self.clone();
         self.size = Some(new_size);
-        GameServerExecutor::execute_draw_event(draw, move |server| {
+        GameServerExecutor::execute_draw_event(draw, move |server, _| {
             slf.resize_in_server(server, new_size)
                 .err()
                 .map(GameUserEvent::Error)

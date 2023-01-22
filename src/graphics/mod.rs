@@ -13,6 +13,7 @@ use self::wrappers::{
 };
 
 pub mod blur;
+pub mod context;
 pub mod debug_callback;
 pub mod quad_renderer;
 pub mod wrappers;

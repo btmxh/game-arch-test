@@ -137,7 +137,7 @@ impl BlurRenderer {
         }
 
         let slf = self.clone();
-        GameServerExecutor::execute_draw_event(draw, move |server| {
+        GameServerExecutor::execute_draw_event(draw, move |server, _| {
             let program = slf.program.get(server);
             let vertex_array = slf.vertex_array.get(server);
             let framebuffers = slf

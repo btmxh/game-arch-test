@@ -1,10 +1,16 @@
 use std::collections::HashMap;
 
+use crate::scene::main::EventRoot;
+
 use super::{executor::GameServerExecutor, main_ctx::MainContext, task::CancellationToken};
 
 pub type DispatchId = u64;
-pub type DispatchFnType =
-    dyn FnOnce(&mut MainContext, &mut GameServerExecutor, DispatchId) -> anyhow::Result<()>;
+pub type DispatchFnType = dyn FnOnce(
+    &mut MainContext,
+    &mut GameServerExecutor,
+    &mut EventRoot,
+    DispatchId,
+) -> anyhow::Result<()>;
 
 #[derive(Default)]
 pub struct DispatchList {
@@ -19,7 +25,12 @@ impl DispatchList {
 
     pub fn push<F>(&mut self, callback: F, cancel_token: CancellationToken) -> DispatchId
     where
-        F: FnOnce(&mut MainContext, &mut GameServerExecutor, DispatchId) -> anyhow::Result<()>
+        F: FnOnce(
+                &mut MainContext,
+                &mut GameServerExecutor,
+                &mut EventRoot,
+                DispatchId,
+            ) -> anyhow::Result<()>
             + 'static,
     {
         self.push_boxed(Box::new(callback), cancel_token)

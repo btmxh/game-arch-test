@@ -11,7 +11,7 @@ use crate::{
     enclose,
     events::GameUserEvent,
     exec::{executor::GameServerExecutor, server::draw},
-    graphics::GfxHandle,
+    graphics::{context::DrawContext, GfxHandle},
 };
 
 use super::{GLGfxHandle, GLHandle, GLHandleContainer, GLHandleTrait, SendGLHandleContainer};
@@ -62,11 +62,11 @@ impl GLHandleTrait for ProgramTrait {
 
     fn bind(_: GLuint, _: ()) {}
 
-    fn get_container_mut(server: &mut draw::Server) -> Option<&mut GLHandleContainer<Self, ()>> {
+    fn get_container_mut(server: &mut DrawContext) -> Option<&mut GLHandleContainer<Self, ()>> {
         Some(&mut server.handles.programs)
     }
 
-    fn get_container(server: &draw::Server) -> Option<&GLHandleContainer<Self, ()>> {
+    fn get_container(server: &DrawContext) -> Option<&GLHandleContainer<Self, ()>> {
         Some(&server.handles.programs)
     }
 }
@@ -166,7 +166,7 @@ impl ProgramHandle {
         let handle = unsafe { Self::new_uninit(draw) };
         GameServerExecutor::execute_draw_event(
             draw,
-            enclose!((handle) move |server| {
+            enclose!((handle) move |server, _| {
                 server.handles.create_vf_program(name, &handle, vertex, fragment)
                     .err()
                     .map(GameUserEvent::Error)

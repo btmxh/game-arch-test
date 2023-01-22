@@ -6,7 +6,10 @@ use glsl_layout::vec2;
 
 use crate::exec::server::draw;
 
-use super::wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle};
+use super::{
+    context::DrawContext,
+    wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle},
+};
 
 mod shader {
     pub const VERTEX: &str = r#"
@@ -62,7 +65,7 @@ impl QuadRenderer {
         })
     }
 
-    pub fn draw(&self, server: &draw::Server, texture: GLuint, bounds: &[vec2; 2]) {
+    pub fn draw(&self, server: &DrawContext, texture: GLuint, bounds: &[vec2; 2]) {
         let vao = self.vertex_array.get(server);
         let program = self.program.get(server);
 

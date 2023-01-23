@@ -34,6 +34,10 @@ impl<T> Receiver<T> {
         };
         Ok(first.into_iter().chain(self.0.try_iter()))
     }
+
+    pub fn is_disconnected(&self) -> bool {
+        self.0.is_disconnected()
+    }
 }
 
 impl<T> Sender<T> {

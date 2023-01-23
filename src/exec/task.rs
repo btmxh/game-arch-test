@@ -4,13 +4,14 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use crate::{
     enclose,
     utils::{error::ResultExt, mpsc},
 };
-use anyhow::Context;
+use delegate::delegate;
 use executors::{
     crossbeam_workstealing_pool::{small_pool, ThreadPool},
     parker::{SmallThreadData, StaticParker},
@@ -21,14 +22,17 @@ pub struct TaskExecutor(ManuallyDrop<ThreadPool<StaticParker<SmallThreadData>>>)
 
 #[derive(Clone)]
 pub struct CancellationToken(Arc<AtomicBool>);
-pub struct FinishToken(mpsc::Receiver<()>);
-pub struct TaskHandle(CancellationToken, FinishToken);
-pub struct DropTaskHandle(TaskHandle);
+pub struct JoinToken(mpsc::Receiver<()>);
+pub struct TaskHandle {
+    pub cancel: CancellationToken,
+    pub join: JoinToken,
+}
+pub struct DropTaskHandle(pub TaskHandle);
 
 impl Drop for DropTaskHandle {
     fn drop(&mut self) {
-        self.0 .0.cancel();
-        self.0 .1.join().log_error();
+        self.cancel();
+        self.join();
     }
 }
 
@@ -51,14 +55,6 @@ impl CancellationToken {
     pub fn new() -> Self {
         Self(Arc::new(AtomicBool::new(false)))
     }
-
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Relaxed)
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
-    }
 }
 
 impl Default for CancellationToken {
@@ -67,14 +63,10 @@ impl Default for CancellationToken {
     }
 }
 
-impl FinishToken {
+impl JoinToken {
     pub fn new() -> (mpsc::Sender<()>, Self) {
         let (sender, receiver) = mpsc::channels();
         (sender, Self(receiver))
-    }
-
-    pub fn join(&self) -> anyhow::Result<()> {
-        self.0.recv().context("unable to receive join message")
     }
 }
 
@@ -88,20 +80,92 @@ impl TaskExecutor {
     where
         F: FnOnce(CancellationToken) + Send + 'static,
     {
-        let cancel_token = CancellationToken::new();
-        let (sender, finish_token) = FinishToken::new();
-        self.0.execute(enclose!((cancel_token) move || {
-            callback(cancel_token);
+        let cancel = CancellationToken::new();
+        let (sender, join) = JoinToken::new();
+        self.0.execute(enclose!((cancel) move || {
+            callback(cancel);
             if let Err(err) = sender.send(()) {
                 tracing::trace!("join message not sent: {}", err);
             }
         }));
-        TaskHandle(cancel_token, finish_token)
+        TaskHandle { cancel, join }
     }
 }
 
 impl Default for TaskExecutor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+pub trait Cancellable {
+    fn cancel(&self);
+    fn is_cancelled(&self) -> bool;
+}
+
+pub trait Joinable {
+    fn join_timeout(&self, timeout: Duration) -> bool;
+    fn has_joined(&self) -> bool;
+
+    fn join(&self) {
+        let result = self.join_timeout(crate::utils::ONE_YEAR);
+        debug_assert!(result);
+    }
+}
+
+impl Cancellable for CancellationToken {
+    fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed)
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+impl Joinable for JoinToken {
+    fn join_timeout(&self, timeout: Duration) -> bool {
+        self.0.recv_timeout(timeout).is_ok()
+    }
+
+    fn has_joined(&self) -> bool {
+        self.0.is_disconnected()
+    }
+}
+
+impl Joinable for TaskHandle {
+    delegate! {
+        to self.join {
+            fn join_timeout(&self, timeout: Duration) -> bool;
+            fn has_joined(&self) -> bool;
+            fn join(&self);
+        }
+    }
+}
+
+impl Cancellable for TaskHandle {
+    delegate! {
+        to self.cancel {
+            fn cancel(&self);
+            fn is_cancelled(&self) -> bool;
+        }
+    }
+}
+impl Joinable for DropTaskHandle {
+    delegate! {
+        to self.0 {
+            fn join_timeout(&self, timeout: Duration) -> bool;
+            fn has_joined(&self) -> bool;
+            fn join(&self);
+        }
+    }
+}
+
+impl Cancellable for DropTaskHandle {
+    delegate! {
+        to self.0 {
+            fn cancel(&self);
+            fn is_cancelled(&self) -> bool;
+        }
     }
 }

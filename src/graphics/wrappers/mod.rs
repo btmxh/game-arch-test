@@ -336,7 +336,7 @@ impl<T: GLHandleTrait<A>, A: Clone> GLHandleContainer<T, A> {
 }
 
 impl<T: GLHandleTrait<A>, A: Clone> SendGLHandleContainer<T, A> {
-    pub fn to_unsend(mut self) -> GLHandleContainer<T, A> {
+    pub fn to_nonsend(mut self) -> GLHandleContainer<T, A> {
         let map = std::mem::take(&mut self.0);
         let token = std::mem::replace(&mut self.1, SendRc::pre_send().ready());
         token.unpark();

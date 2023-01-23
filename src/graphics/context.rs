@@ -215,7 +215,7 @@ impl SendDrawContext {
             display_handles: self.display_handles,
             display_size: self.display_size,
             swap_interval: self.swap_interval,
-            handles: self.handles.to_unsend(),
+            handles: self.handles.to_nonsend(),
         })
     }
 }

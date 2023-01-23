@@ -143,13 +143,13 @@ impl SendHandleContainer {
         Self::default()
     }
 
-    pub fn to_unsend(self) -> HandleContainer {
+    pub fn to_nonsend(self) -> HandleContainer {
         HandleContainer {
-            vertex_arrays: self.vertex_arrays.to_unsend(),
-            buffers: self.buffers.to_unsend(),
-            textures: self.textures.to_unsend(),
-            programs: self.programs.to_unsend(),
-            framebuffers: self.framebuffers.to_unsend(),
+            vertex_arrays: self.vertex_arrays.to_nonsend(),
+            buffers: self.buffers.to_nonsend(),
+            textures: self.textures.to_nonsend(),
+            programs: self.programs.to_nonsend(),
+            framebuffers: self.framebuffers.to_nonsend(),
         }
     }
 }

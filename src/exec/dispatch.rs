@@ -2,7 +2,11 @@ use std::collections::HashMap;
 
 use crate::scene::main::EventRoot;
 
-use super::{executor::GameServerExecutor, main_ctx::MainContext, task::CancellationToken};
+use super::{
+    executor::GameServerExecutor,
+    main_ctx::MainContext,
+    task::{Cancellable, CancellationToken},
+};
 
 pub type DispatchId = u64;
 pub type DispatchFnType = dyn FnOnce(

@@ -10,8 +10,7 @@ pub mod task;
 const NUM_GAME_LOOPS: usize = 3;
 
 #[cfg(debug_assertions)]
-// one year, basically Duration::MAX without the overflowing
-const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_secs(31556926);
+const DEFAULT_RECV_TIMEOUT: Duration = crate::utils::ONE_YEAR;
 
 #[cfg(not(debug_assertions))]
 const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_millis(300);

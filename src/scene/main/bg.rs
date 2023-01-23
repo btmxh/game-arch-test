@@ -10,6 +10,7 @@ use crate::{
         executor::GameServerExecutor,
         main_ctx::MainContext,
         server::{GameServerSendChannel, ServerChannels},
+        task::{Cancellable, Joinable, TaskHandle},
     },
     graphics::{
         blur::BlurRenderer,
@@ -23,7 +24,7 @@ pub struct Background {
     pub blur: BlurRenderer,
     pub renderer: QuadRenderer,
     pub texture: TextureHandle,
-    pub texture_loaded: bool,
+    pub texture_task: TaskHandle,
 }
 
 impl Background {
@@ -35,7 +36,7 @@ impl Background {
             .context("quad renderer initialization failed")?;
         let blur = BlurRenderer::new(main_ctx.dummy_vao.clone(), &mut main_ctx.channels.draw)
             .context("blur renderer initialization failed")?;
-        let texture = Self::init_test_texture(
+        let (texture, texture_task) = Self::init_test_texture(
             executor,
             &mut main_ctx.channels,
             blur.clone(),
@@ -46,7 +47,7 @@ impl Background {
             texture,
             blur,
             renderer,
-            texture_loaded: false,
+            texture_task,
         })
     }
 
@@ -56,12 +57,12 @@ impl Background {
         channels: &mut ServerChannels,
         blur: BlurRenderer,
         renderer: QuadRenderer,
-    ) -> anyhow::Result<TextureHandle> {
+    ) -> anyhow::Result<(TextureHandle, TaskHandle)> {
         let test_texture =
             TextureHandle::new_args(&mut channels.draw, "test texture", TextureType::E2D)?;
 
         let channel = channels.draw.clone_sender();
-        executor.execute_blocking_task(enclose!((test_texture) move |token| {
+        let task = executor.execute_blocking_task(enclose!((test_texture) move |token| {
             let img = image::io::Reader::open("BG.jpg")
                 .context("unable to load test texture")?
                 .decode()
@@ -111,7 +112,7 @@ impl Background {
             })?;
             Ok(())
         }));
-        Ok(test_texture)
+        Ok((test_texture, task))
     }
 
     fn update_blur_texture(
@@ -138,7 +139,7 @@ impl Background {
     ) -> anyhow::Result<bool> {
         match event {
             GameEvent::UserEvent(GameUserEvent::CheckedResize(PhysicalSize { width, height })) => {
-                if self.texture_loaded {
+                if self.texture_task.has_joined() {
                     self.update_blur_texture(
                         main_ctx,
                         Some(PhysicalSize {

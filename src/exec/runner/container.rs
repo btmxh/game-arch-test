@@ -20,9 +20,9 @@ impl ServerMover for ServerContainer {
 
     fn emplace_server(&mut self, server: SendGameServer) -> anyhow::Result<()> {
         match server {
-            SendGameServer::Audio(server) => self.audio = Some(server),
+            SendGameServer::Audio(server) => self.audio = Some(*server),
             SendGameServer::Draw(server) => self.draw = Some(server.to_nonsend()?),
-            SendGameServer::Update(server) => self.update = Some(server),
+            SendGameServer::Update(server) => self.update = Some(*server),
         }
         Ok(())
     }

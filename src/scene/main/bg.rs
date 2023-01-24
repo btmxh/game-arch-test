@@ -69,6 +69,7 @@ impl Background {
     }
 
     #[allow(unused_mut)]
+    #[allow(clippy::type_complexity)]
     fn init_test_texture(
         executor: &mut GameServerExecutor,
         channels: &mut ServerChannels,
@@ -177,7 +178,7 @@ impl Background {
                 let renderer = self.renderer.clone();
                 let texture = self.texture.clone();
                 GameServerExecutor::execute_draw_event(
-                    &mut main_ctx.channels.draw,
+                    &main_ctx.channels.draw,
                     move |context, _| {
                         screen_framebuffer.get(context).bind();
                         let viewport_size = context.display_size;
@@ -250,9 +251,8 @@ impl Background {
                     let new_abs = 1.0 - (1.0 - abs).powf(3.0);
                     sign * new_abs
                 });
-                tracing::info!("{:?}", offset);
                 GameServerExecutor::execute_draw_event(
-                    &mut main_ctx.channels.draw,
+                    &main_ctx.channels.draw,
                     move |_, root| {
                         if let Some(background) = root.background.as_mut() {
                             background.set_offset(offset);

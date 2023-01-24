@@ -45,7 +45,6 @@ pub struct QuadRenderer {
 }
 
 impl QuadRenderer {
-    #[allow(unused_mut)]
     pub fn new(
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,

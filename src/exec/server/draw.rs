@@ -43,10 +43,10 @@ impl GameServer for Server {
     }
 
     fn to_send(self) -> anyhow::Result<SendGameServer> {
-        Ok(SendGameServer::Draw(SendServer {
+        Ok(SendGameServer::Draw(Box::new(SendServer {
             context: self.context.to_send()?,
             root_scene: self.root_scene,
-        }))
+        })))
     }
 }
 

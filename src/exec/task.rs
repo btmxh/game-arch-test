@@ -88,7 +88,6 @@ impl TaskExecutor {
         Self(ManuallyDrop::new(small_pool(4)))
     }
 
-    #[allow(unused_mut)]
     pub fn execute<F>(&self, callback: F)
     where
         F: FnOnce() + Send + 'static,

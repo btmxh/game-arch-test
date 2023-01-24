@@ -117,7 +117,6 @@ impl DrawContext {
         Ok(())
     }
 
-    #[allow(clippy::redundant_closure_call)]
     fn process_messages(&mut self, root_scene: &mut DrawRoot) -> anyhow::Result<()> {
         let messages = self
             .base

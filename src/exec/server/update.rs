@@ -67,7 +67,7 @@ impl GameServer for Server {
         Ok(())
     }
     fn to_send(self) -> anyhow::Result<SendGameServer> {
-        Ok(SendGameServer::Update(self))
+        Ok(SendGameServer::Update(Box::new(self)))
     }
 }
 

@@ -20,8 +20,6 @@ pub fn generate_gaussian_kernel<const N: usize>(sigma: f32) -> [f32; N] {
             arr[i] = inv_sqrt2pi * (-0.5 * x * x).exp() / sigma
         });
     }
-    tracing::info!("{}", arr.iter().sum::<f32>());
-    tracing::info!("{}", arr.iter().skip(1).sum::<f32>());
     arr
 }
 
@@ -92,7 +90,6 @@ pub struct BlurRenderer {
 }
 
 impl BlurRenderer {
-    #[allow(unused_mut)]
     pub fn new(
         dummy_vao: VertexArrayHandle,
         draw: &mut draw::ServerChannel,

@@ -55,7 +55,7 @@ impl GameServer for Server {
         Ok(())
     }
     fn to_send(self) -> anyhow::Result<SendGameServer> {
-        Ok(SendGameServer::Audio(self))
+        Ok(SendGameServer::Audio(Box::new(self)))
     }
 }
 

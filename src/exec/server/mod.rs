@@ -89,9 +89,9 @@ pub trait GameServer {
 }
 
 pub enum SendGameServer {
-    Audio(audio::Server),
-    Update(update::Server),
-    Draw(draw::SendServer),
+    Audio(Box<audio::Server>),
+    Update(Box<update::Server>),
+    Draw(Box<draw::SendServer>),
 }
 
 impl SendGameServer {

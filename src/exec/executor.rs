@@ -91,7 +91,7 @@ impl GameServerExecutor {
             draw: None,
             update: Some(update),
         };
-        container.emplace_server_check(SendGameServer::Draw(draw))?;
+        container.emplace_server_check(SendGameServer::Draw(Box::new(draw)))?;
         Ok(Self {
             thread_runners: Default::default(),
             main_runner: MainRunner {

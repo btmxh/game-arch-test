@@ -43,7 +43,7 @@ impl Background {
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[0], BOUNDS_POS_1[0]),
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[1], BOUNDS_POS_1[1]),
             ];
-            self.renderer.draw(&context, *texture, &bounds);
+            self.renderer.draw(context, *texture, &bounds);
         }
 
         Ok(())

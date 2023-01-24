@@ -128,10 +128,10 @@ impl GameServerExecutor {
         event_loop.run(move |event, _target, control_flow| {
             // guarantee drop order
             fn unused<T>(_: &T) {}
-            unused(&guard);
             unused(&root_scene);
             unused(&main_ctx);
             unused(&self);
+            unused(&guard);
             match event {
                 Event::MainEventsCleared => {
                     self.main_runner

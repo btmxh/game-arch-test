@@ -2,13 +2,12 @@ use std::ffi::CStr;
 
 use anyhow::Context;
 use gl::types::GLuint;
-use glsl_layout::vec2;
 
 use crate::exec::server::draw;
 
 use super::{
     context::DrawContext,
-    wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle},
+    wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle}, Vec2,
 };
 
 mod shader {
@@ -65,7 +64,7 @@ impl QuadRenderer {
         })
     }
 
-    pub fn draw(&self, context: &DrawContext, texture: GLuint, bounds: &[vec2; 2]) {
+    pub fn draw(&self, context: &DrawContext, texture: GLuint, bounds: &[Vec2; 2]) {
         let vao = self.vertex_array.get(context);
         let program = self.program.get(context);
 

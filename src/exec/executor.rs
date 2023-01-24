@@ -23,7 +23,7 @@ use super::{
     server::{
         audio, draw, update, GameServerChannel, GameServerSendChannel, SendGameServer, ServerKind,
     },
-    task::{CancellationToken, TaskExecutor, TaskHandle},
+    task::TaskExecutor,
     NUM_GAME_LOOPS,
 };
 
@@ -205,14 +205,10 @@ impl GameServerExecutor {
         )))
     }
 
-    pub fn execute_blocking_task<F>(&mut self, f: F) -> TaskHandle
+    pub fn execute_blocking_task<F>(&mut self, f: F)
     where
-        F: FnOnce(CancellationToken) -> anyhow::Result<()> + Send + 'static,
+        F: FnOnce() + Send + 'static,
     {
-        self.task_executor.execute(move |token| {
-            if let Err(e) = f(token) {
-                tracing::error!("error while running blocking task: {}", e);
-            }
-        })
+        self.task_executor.execute(f)
     }
 }

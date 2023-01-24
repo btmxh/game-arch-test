@@ -691,6 +691,7 @@ name = "game-arch-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cgmath",
  "clap",
  "delegate",
  "derivative",

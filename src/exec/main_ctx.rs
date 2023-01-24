@@ -80,7 +80,6 @@ impl MainContext {
             self,
             GameEvent::UserEvent(GameUserEvent::CheckedResize(size)),
         )?;
-        // self.update_blur_texture(32.0)?;
         Ok(())
     }
 
@@ -263,7 +262,9 @@ impl MainContext {
                 tracing::error!("GameUserEvent::Error caught: {}", e);
             }
 
-            _ => {}
+            event => {
+                root_scene.handle_event(executor, self, event)?;
+            }
         };
         Ok(())
     }

@@ -1,5 +1,3 @@
-use winit::dpi::PhysicalSize;
-
 use crate::graphics::{
     blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer,
 };
@@ -11,7 +9,7 @@ pub mod clear;
 
 pub struct DrawRoot {
     clear: ClearScreen,
-    background: Option<Background>,
+    pub background: Option<Background>,
 }
 
 impl DrawRoot {
@@ -35,9 +33,8 @@ impl DrawRoot {
         &mut self,
         blur: BlurRenderer,
         renderer: QuadRenderer,
-        texture_dimensions: PhysicalSize<u32>,
     ) -> anyhow::Result<()> {
-        self.background = Some(Background::new(blur, renderer, texture_dimensions));
+        self.background = Some(Background::new(blur, renderer));
         Ok(())
     }
 }

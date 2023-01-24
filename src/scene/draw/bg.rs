@@ -1,45 +1,49 @@
-use winit::dpi::PhysicalSize;
+use cgmath::{Vector2, Zero};
 
-use crate::graphics::{blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer};
+use crate::graphics::{
+    blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer, Vec2,
+};
 
 pub struct Background {
     blur: BlurRenderer,
     renderer: QuadRenderer,
-    texture_dimensions: PhysicalSize<u32>,
+    offset: Vec2,
 }
 
 impl Background {
-    pub fn new(
-        blur: BlurRenderer,
-        renderer: QuadRenderer,
-        texture_dimensions: PhysicalSize<u32>,
-    ) -> Self {
+    pub fn new(blur: BlurRenderer, renderer: QuadRenderer) -> Self {
         Self {
             blur,
             renderer,
-            texture_dimensions,
+            offset: Vector2::zero(),
         }
+    }
+
+    fn lerp_vec2(amt: Vec2, min: Vec2, max: Vec2) -> Vec2 {
+        Vec2::new(
+            min.x + (max.x - min.x) * amt.x,
+            min.y + (max.y - min.y) * amt.y,
+        )
+    }
+
+    pub fn set_offset(&mut self, offset: Vec2) {
+        self.offset = offset;
     }
 
     pub fn draw(&mut self, context: &mut DrawContext) -> anyhow::Result<()> {
         if let Some(texture) = self.blur.output_texture_handle().try_get(context) {
-            let viewport_size = context.display_size;
-            let vw = viewport_size.width.get() as f32;
-            let vh = viewport_size.height.get() as f32;
-            let tw = self.texture_dimensions.width as f32;
-            let th = self.texture_dimensions.height as f32;
-            let var = vw / vh;
-            let tar = tw / th;
-            let (hw, hh) = if var < tar {
-                (0.5 * var / tar, 0.5)
-            } else {
-                (0.5, 0.5 * tar / var)
-            };
-            self.renderer.draw(
-                &context,
-                *texture,
-                &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-            );
+            const OFFSET_FACTOR_VECTOR: Vec2 = Vec2::new(0.995, 0.998);
+            const BOUNDS_NEG_1: [Vec2; 2] = [Vec2::new(0.0, 0.0), OFFSET_FACTOR_VECTOR];
+            const BOUNDS_POS_1: [Vec2; 2] = [
+                Vec2::new(1.0 - OFFSET_FACTOR_VECTOR.x, 1.0 - OFFSET_FACTOR_VECTOR.y),
+                Vec2::new(1.0, 1.0),
+            ];
+            let normalized_offset = self.offset.map(|v| (v + 1.0) * 0.5);
+            let bounds = [
+                Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[0], BOUNDS_POS_1[0]),
+                Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[1], BOUNDS_POS_1[1]),
+            ];
+            self.renderer.draw(&context, *texture, &bounds);
         }
 
         Ok(())

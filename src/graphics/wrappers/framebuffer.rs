@@ -125,6 +125,16 @@ impl DefaultTextureFramebuffer {
                 gl::TEXTURE_MAG_FILTER,
                 gl::LINEAR.try_into().unwrap(),
             );
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_WRAP_S,
+                gl::CLAMP_TO_EDGE.try_into().unwrap(),
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_WRAP_T,
+                gl::CLAMP_TO_EDGE.try_into().unwrap(),
+            );
             gl::FramebufferTexture2D(
                 gl::FRAMEBUFFER,
                 gl::COLOR_ATTACHMENT0,

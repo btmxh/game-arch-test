@@ -5,7 +5,9 @@ use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEve
 
 use crate::{
     events::GameEvent,
-    exec::{executor::GameServerExecutor, main_ctx::MainContext}, utils::clock::debug_get_time, scene::main::EventRoot,
+    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    scene::main::EventRoot,
+    utils::clock::debug_get_time,
 };
 
 pub struct UpdateDelayTest {
@@ -39,13 +41,16 @@ impl UpdateDelayTest {
         let time = debug_get_time();
         let test_duration = thread_rng().gen_range(5.0..10.0);
         tracing::info!("{}", time);
-        main_ctx.set_timeout(Duration::from_secs_f64(test_duration), move |_, _, root_scene, _| {
-            let delay = debug_get_time() - time - test_duration;
-            let slf = Self::get(root_scene);
-            slf.add_delay(delay);
-            tracing::info!("delay: {}s, avg: {}s", delay, slf.running_avg);
-            Ok(())
-        })?;
+        main_ctx.set_timeout(
+            Duration::from_secs_f64(test_duration),
+            move |_, _, root_scene, _| {
+                let delay = debug_get_time() - time - test_duration;
+                let slf = Self::get(root_scene);
+                slf.add_delay(delay);
+                tracing::info!("delay: {}s, avg: {}s", delay, slf.running_avg);
+                Ok(())
+            },
+        )?;
 
         Ok(())
     }

@@ -107,11 +107,7 @@ impl Shader {
 }
 
 impl Program {
-    pub fn init_vf(
-        &self,
-        vertex: &str,
-        fragment: &str,
-    ) -> anyhow::Result<()> {
+    pub fn init_vf(&self, vertex: &str, fragment: &str) -> anyhow::Result<()> {
         let vertex = Shader::new_sourced(
             format!("{} vertex shader", self.name()),
             ShaderType::Vertex,

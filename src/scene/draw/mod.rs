@@ -1,6 +1,4 @@
-use crate::graphics::{
-    blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer,
-};
+use crate::graphics::{blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer};
 
 use self::{bg::Background, clear::ClearScreen};
 

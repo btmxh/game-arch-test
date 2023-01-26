@@ -13,7 +13,7 @@ use crate::{
     exec::{
         executor::GameServerExecutor,
         main_ctx::MainContext,
-        server::{GameServerSendChannel, ServerChannels},
+        server::GameServerSendChannel,
         task::{JoinToken, Joinable, TryJoinTaskResult},
     },
     graphics::{
@@ -32,7 +32,7 @@ pub struct Background {
     pub blur: BlurRenderer,
     pub renderer: QuadRenderer,
     pub texture: TextureHandle,
-    pub join_load_texture: Option<JoinToken<anyhow::Result<PhysicalSize<u32>>>>,
+    pub join_load_texture: Option<JoinToken<PhysicalSize<u32>>>,
     pub texture_dimensions: Option<PhysicalSize<u32>>,
     pub screen_framebuffer: DefaultTextureFramebuffer,
 }
@@ -50,13 +50,9 @@ impl Background {
             DefaultTextureFramebuffer::new(&mut main_ctx.channels.draw, "screen framebuffer")
                 .context("screen framebuffer initialization failed")?;
         screen_framebuffer.resize(&mut main_ctx.channels.draw, main_ctx.display.get_size())?;
-        let (texture, join_load_texture) = Self::init_test_texture(
-            executor,
-            &mut main_ctx.channels,
-            blur.clone(),
-            renderer.clone(),
-        )
-        .context("unable to initialize test texture")?;
+        let (texture, join_load_texture) =
+            Self::init_test_texture(executor, main_ctx, blur.clone(), renderer.clone())
+                .context("unable to initialize test texture")?;
         Ok(Self {
             texture,
             blur,
@@ -70,14 +66,18 @@ impl Background {
     #[allow(unused_mut)]
     fn init_test_texture(
         executor: &mut GameServerExecutor,
-        channels: &mut ServerChannels,
+        main_ctx: &mut MainContext,
         blur: BlurRenderer,
         renderer: QuadRenderer,
-    ) -> anyhow::Result<(TextureHandle, JoinToken<anyhow::Result<PhysicalSize<u32>>>)> {
-        let test_texture =
-            TextureHandle::new_args(&mut channels.draw, "test texture", TextureType::E2D)?;
+    ) -> anyhow::Result<(TextureHandle, JoinToken<PhysicalSize<u32>>)> {
+        let test_texture = TextureHandle::new_args(
+            &mut main_ctx.channels.draw,
+            "test texture",
+            TextureType::E2D,
+        )?;
 
-        let channel = channels.draw.clone_sender();
+        let channel = main_ctx.channels.draw.clone_sender();
+        let proxy = main_ctx.event_loop_proxy.clone();
         let (sender, join_token) = JoinToken::new();
 
         executor.execute_blocking_task(enclose!((test_texture) move || {
@@ -130,7 +130,11 @@ impl Background {
 
                 Ok(img_size)
             })();
-            sender.send(result).log_warn();
+
+            match result {
+                Ok(result) => sender.send(result).log_warn(),
+                Err(err) => proxy.send_event(GameUserEvent::Error(err)).log_warn(),
+            };
         }));
         Ok((test_texture, join_token))
     }
@@ -149,9 +153,7 @@ impl Background {
                 TryJoinTaskResult::NotJoined => {
                     self.join_load_texture = Some(join_load_texture);
                 }
-                TryJoinTaskResult::Joined(result) => {
-                    self.texture_dimensions = Some(result.context("unable to load texture")?)
-                }
+                TryJoinTaskResult::Joined(result) => self.texture_dimensions = Some(result),
             }
         }
         if let Some(texture_dimensions) = self.texture_dimensions {

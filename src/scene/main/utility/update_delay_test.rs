@@ -44,7 +44,7 @@ impl UpdateDelayTest {
                         input:
                             KeyboardInput {
                                 state: ElementState::Released,
-                                virtual_keycode: Some(VirtualKeyCode::Q),
+                                virtual_keycode: Some(VirtualKeyCode::R),
                                 ..
                             },
                         ..

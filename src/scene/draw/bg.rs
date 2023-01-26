@@ -1,4 +1,4 @@
-use cgmath::{Vector2, Zero};
+use cgmath::{Matrix3, SquareMatrix, Vector2, Zero};
 
 use crate::graphics::{
     blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer, Vec2,
@@ -43,7 +43,14 @@ impl Background {
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[0], BOUNDS_POS_1[0]),
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[1], BOUNDS_POS_1[1]),
             ];
-            self.renderer.draw(context, *texture, &bounds);
+            self.renderer.draw(
+                context,
+                *texture,
+                &QuadRenderer::FULL_WINDOW_POS_BOUNDS,
+                &bounds,
+                &Vec2::zero(),
+                &Matrix3::identity(),
+            );
         }
 
         Ok(())

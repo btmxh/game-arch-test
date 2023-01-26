@@ -66,7 +66,7 @@ impl VSync {
                         input:
                             KeyboardInput {
                                 state: ElementState::Released,
-                                virtual_keycode: Some(VirtualKeyCode::R),
+                                virtual_keycode: Some(VirtualKeyCode::E),
                                 ..
                             },
                         ..

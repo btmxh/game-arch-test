@@ -1,10 +1,5 @@
 use std::{
-    borrow::Cow,
-    collections::HashMap,
-    ffi::CString,
-    marker::PhantomData,
-    ops::Deref,
-    sync::{Arc, MutexGuard},
+    borrow::Cow, collections::HashMap, ffi::CString, marker::PhantomData, ops::Deref, sync::Arc,
 };
 
 use anyhow::{bail, Context};
@@ -18,7 +13,7 @@ use crate::{
         executor::GameServerExecutor,
         server::{draw, GameServerSendChannel, ServerSendChannel},
     },
-    utils::error::ResultExt,
+    utils::{error::ResultExt, send_sync::PhantomUnsync},
 };
 
 use super::{context::DrawContext, GfxHandle};
@@ -234,7 +229,7 @@ impl<T: GLHandleTrait<()>> GLHandle<T> {
 
 pub struct GLHandleContainer<T: GLHandleTrait<A>, A: Clone = ()>(
     HashMap<u64, GLHandle<T, A>>,
-    PhantomData<MutexGuard<'static, ()>>, // impl !Send
+    PhantomUnsync,
 );
 
 pub struct SendGLHandleContainer<T: GLHandleTrait<A>, A: Clone = ()>(

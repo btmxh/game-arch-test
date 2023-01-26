@@ -161,8 +161,9 @@ impl QuadRenderer {
 
 #[test]
 fn test_send_sync() {
-    fn assert_send<T: Send>() {}
-    fn assert_sync<T: Sync>() {}
-    assert_send::<QuadRenderer>();
-    assert_sync::<QuadRenderer>();
+    use crate::{assert_send, assert_sync};
+    // `QuadRenderer` is basically two GLGfxHandles, therefore
+    // it should be both Send and Sync.
+    assert_send!(QuadRenderer);
+    assert_sync!(QuadRenderer);
 }

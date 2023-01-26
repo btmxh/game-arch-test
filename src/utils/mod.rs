@@ -8,6 +8,7 @@ pub mod error;
 pub mod frequency_runner;
 pub mod log;
 pub mod mpsc;
+pub mod send_sync;
 pub mod sync;
 
 // one year, basically Duration::MAX without the overflowing

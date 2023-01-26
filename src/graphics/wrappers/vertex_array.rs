@@ -44,8 +44,11 @@ impl GLHandleTrait for VertexArrayTrait {
 
 #[test]
 fn test_send_sync() {
-    fn assert_send<T: Send>() {}
-    fn assert_sync<T: Sync>() {}
-    assert_send::<VertexArrayHandle>();
-    assert_sync::<VertexArrayHandle>();
+    use crate::{assert_not_sync, assert_send, assert_sync};
+    assert_send!(VertexArrayHandle);
+    assert_sync!(VertexArrayHandle);
+    // VertexArrays is stored in a container that must be sendable
+    // if `draw::Server` is sendable
+    assert_send!(VertexArray);
+    assert_not_sync!(VertexArray);
 }

@@ -1,4 +1,5 @@
 use anyhow::{bail, Context};
+use cgmath::{Zero, Matrix3, SquareMatrix};
 use glutin::prelude::GlConfig;
 use image::EncodableLayout;
 use winit::{
@@ -196,7 +197,10 @@ impl Background {
                         renderer.draw(
                             context,
                             *texture.get(context),
+                            &QuadRenderer::FULL_WINDOW_POS_BOUNDS,
                             &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
+                            &Vec2::zero(),
+                            &Matrix3::identity(),
                         );
                         Framebuffer::unbind_static();
                         []

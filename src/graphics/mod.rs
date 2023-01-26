@@ -122,7 +122,9 @@ impl HandleContainer {
         vertex: &str,
         fragment: &str,
     ) -> anyhow::Result<Program> {
-        Program::new_vf(name.into(), vertex, fragment).map(|p| self.programs.insert(handle, p))
+        let program = Program::new(name.into()).map(|p| self.programs.insert(handle, p))?;
+        program.init_vf(vertex, fragment)?;
+        Ok(program)
     }
 
     pub fn create_framebuffer(

@@ -107,37 +107,36 @@ impl Shader {
 }
 
 impl Program {
-    pub fn new_vf(
-        name: impl Into<Cow<'static, str>>,
+    pub fn init_vf(
+        &self,
         vertex: &str,
         fragment: &str,
-    ) -> anyhow::Result<Self> {
-        let program = Self::new(name)?;
+    ) -> anyhow::Result<()> {
         let vertex = Shader::new_sourced(
-            format!("{} vertex shader", program.name()),
+            format!("{} vertex shader", self.name()),
             ShaderType::Vertex,
             vertex,
         )?;
         let fragment = Shader::new_sourced(
-            format!("{} fragment shader", program.name()),
+            format!("{} fragment shader", self.name()),
             ShaderType::Fragment,
             fragment,
         )?;
 
         unsafe {
-            gl::AttachShader(*program, *vertex);
-            gl::AttachShader(*program, *fragment);
-            gl::LinkProgram(*program);
-            gl::ValidateProgram(*program);
+            gl::AttachShader(**self, *vertex);
+            gl::AttachShader(**self, *fragment);
+            gl::LinkProgram(**self);
+            gl::ValidateProgram(**self);
             let mut status = 0;
-            gl::GetProgramiv(*program, gl::LINK_STATUS, &mut status);
+            gl::GetProgramiv(**self, gl::LINK_STATUS, &mut status);
             if status == gl::FALSE.into() {
                 let mut length = 0;
-                gl::GetProgramiv(*program, gl::INFO_LOG_LENGTH, &mut length);
+                gl::GetProgramiv(**self, gl::INFO_LOG_LENGTH, &mut length);
                 let mut buffer = Vec::<u8>::new();
                 buffer.resize(length.try_into()?, 0);
                 gl::GetProgramInfoLog(
-                    *program,
+                    **self,
                     length,
                     null_mut(),
                     buffer.as_mut_ptr() as *mut GLchar,
@@ -145,13 +144,13 @@ impl Program {
                 let log = CStr::from_bytes_with_nul(buffer.as_slice())
                     .map(|l| l.to_string_lossy())
                     .unwrap_or_else(|_| Cow::Borrowed("unknown error occurred"));
-                bail!("unable to link {}, log: {}", program.name(), log);
+                bail!("unable to link {}, log: {}", self.name(), log);
             }
-            gl::DetachShader(*program, *vertex);
-            gl::DetachShader(*program, *fragment);
+            gl::DetachShader(**self, *vertex);
+            gl::DetachShader(**self, *fragment);
         }
 
-        Ok(program)
+        Ok(())
     }
 }
 

@@ -8,6 +8,7 @@ pub trait ResultExt<T> {
     fn log_error(self) -> Option<T>;
     fn log_warn(self) -> Option<T>;
     fn log_info(self) -> Option<T>;
+    fn log_trace(self) -> Option<T>;
 }
 
 impl<T, E: Display> ResultExt<T> for Result<T, E> {
@@ -36,6 +37,16 @@ impl<T, E: Display> ResultExt<T> for Result<T, E> {
             Ok(value) => Some(value),
             Err(err) => {
                 tracing::info!("{}", err);
+                None
+            }
+        }
+    }
+
+    fn log_trace(self) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(err) => {
+                tracing::trace!("{}", err);
                 None
             }
         }

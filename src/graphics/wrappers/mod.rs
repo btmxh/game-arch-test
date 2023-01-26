@@ -99,7 +99,7 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> Drop for GLGfxHandleInne
             ))
             .map_err(|e| anyhow::format_err!("{}", e))
             .context("unable to send GL handle drop execute message to draw server, the connection was closed (the handles were probably dropped with the server earlier, if so this is not a leak)")
-            .log_info();
+            .log_trace();
     }
 }
 

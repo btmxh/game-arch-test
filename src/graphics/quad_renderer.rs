@@ -1,7 +1,7 @@
 use std::ffi::CStr;
 
 use anyhow::Context;
-use cgmath::{Matrix3, Matrix};
+use cgmath::{Matrix, Matrix3};
 use gl::types::GLuint;
 
 use crate::exec::server::draw;
@@ -19,9 +19,9 @@ mod shader {
     out vec2 vf_orig_pos;
     out vec2 vf_tex_coords;
 
-    uniform vec2 pos_bounds[2];
+    uniform mediump vec2 pos_bounds[2];
+    uniform mediump vec2 radius;
     uniform vec2 tex_bounds[2];
-    uniform vec2 radius;
     uniform mat3 transform;
 
     const vec2 mix_tex_coords[4] = vec2[](
@@ -51,13 +51,14 @@ mod shader {
     in vec2 vf_tex_coords;
     out vec4 color;
 
-    uniform sampler2D tex;
-    uniform vec2 radius;
     uniform vec2 pos_bounds[2];
+    uniform vec2 radius;
+    uniform sampler2D tex;
 
     void main() {
         const float max_distance = 0.1;
         vec2 offset = clamp(vf_orig_pos, pos_bounds[0], pos_bounds[1]);
+        // division could be replaced by some fancy math
         vec2 normalized_offset = offset / radius;
         float distance = dot(normalized_offset, normalized_offset);
         float alpha = 1.0 - smoothstep(1.0, 1.0 + max_distance, distance);

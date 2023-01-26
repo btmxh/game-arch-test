@@ -1,7 +1,5 @@
 use std::{borrow::Cow, hash::Hash, marker::PhantomData};
 
-use cgmath::{Vector2, Vector3, Vector4};
-
 use crate::exec::server::draw;
 
 use self::wrappers::{
@@ -13,10 +11,6 @@ use self::wrappers::{
         SendVertexArrayContainer, VertexArray, VertexArrayContainer, VertexArrayHandle,
     },
 };
-
-pub type Vec2 = Vector2<f32>;
-pub type Vec3 = Vector3<f32>;
-pub type Vec4 = Vector4<f32>;
 
 pub mod blur;
 pub mod context;

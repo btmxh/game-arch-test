@@ -1,13 +1,15 @@
-use cgmath::{Matrix3, SquareMatrix, Vector2, Zero};
+use glam::{Mat3, Vec2};
 
-use crate::graphics::{
-    blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer, Vec2,
+use crate::{
+    graphics::{blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer},
+    utils::clock::{Clock, SteadyClock},
 };
 
 pub struct Background {
     blur: BlurRenderer,
     renderer: QuadRenderer,
     offset: Vec2,
+    clock: SteadyClock,
 }
 
 impl Background {
@@ -15,7 +17,8 @@ impl Background {
         Self {
             blur,
             renderer,
-            offset: Vector2::zero(),
+            offset: Vec2::ZERO,
+            clock: SteadyClock::new(),
         }
     }
 
@@ -38,18 +41,22 @@ impl Background {
                 Vec2::new(1.0 - OFFSET_FACTOR_VECTOR.x, 1.0 - OFFSET_FACTOR_VECTOR.y),
                 Vec2::new(1.0, 1.0),
             ];
-            let normalized_offset = self.offset.map(|v| (v + 1.0) * 0.5);
+            const HALF: Vec2 = Vec2::new(0.5, 0.5);
+            let normalized_offset = self.offset.mul_add(HALF, HALF);
             let bounds = [
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[0], BOUNDS_POS_1[0]),
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[1], BOUNDS_POS_1[1]),
             ];
+            let angle = self.clock.now() as f32;
+            let transform = Mat3::from_angle(angle);
+            let radius = Vec2::new(1.0, 1.0);
             self.renderer.draw(
                 context,
                 *texture,
                 &QuadRenderer::FULL_WINDOW_POS_BOUNDS,
                 &bounds,
-                &Vec2::zero(),
-                &Matrix3::identity(),
+                &radius,
+                &transform,
             );
         }
 

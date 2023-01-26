@@ -1,5 +1,5 @@
 use anyhow::Context;
-use cgmath::{Matrix3, SquareMatrix, Zero};
+use glam::{Mat3, Vec2};
 use glutin::prelude::GlConfig;
 use image::EncodableLayout;
 use winit::{
@@ -23,7 +23,6 @@ use crate::{
             framebuffer::{DefaultTextureFramebuffer, Framebuffer},
             texture::{TextureHandle, TextureType},
         },
-        Vec2,
     },
     utils::error::ResultExt,
 };
@@ -184,8 +183,8 @@ impl Background {
                             *texture.get(context),
                             &QuadRenderer::FULL_WINDOW_POS_BOUNDS,
                             &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                            &Vec2::zero(),
-                            &Matrix3::identity(),
+                            &Vec2::ZERO,
+                            &Mat3::IDENTITY,
                         );
                         Framebuffer::unbind_static();
                         []
@@ -234,12 +233,14 @@ impl Background {
                     ((*x as f32) / (width as f32)) * 2.0 - 1.0,
                     -(((*y as f32) / (height as f32)) * 2.0 - 1.0),
                 );
-                offset = offset.map(|factor| {
+                fn interpolate(factor: f32) -> f32 {
                     let sign = factor.signum();
                     let abs = factor.abs();
                     let new_abs = 1.0 - (1.0 - abs).powf(3.0);
                     sign * new_abs
-                });
+                }
+                offset.x = interpolate(offset.x);
+                offset.y = interpolate(offset.y);
                 GameServerExecutor::execute_draw_event(&main_ctx.channels.draw, move |_, root| {
                     if let Some(background) = root.background.as_mut() {
                         background.set_offset(offset);

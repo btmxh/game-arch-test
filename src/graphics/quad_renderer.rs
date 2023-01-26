@@ -1,15 +1,14 @@
 use std::ffi::CStr;
 
 use anyhow::Context;
-use cgmath::{Matrix, Matrix3};
 use gl::types::GLuint;
+use glam::{Mat3, Vec2};
 
 use crate::exec::server::draw;
 
 use super::{
     context::DrawContext,
     wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle},
-    Vec2,
 };
 
 mod shader {
@@ -27,24 +26,20 @@ mod shader {
     uniform mat3 transform;
 
     const vec2 mix_tex_coords[4] = vec2[](
-        vec2(0.0, 1.0), vec2(1.0, 1.0),
-        vec2(0.0, 0.0), vec2(1.0, 0.0)
+        vec2(0.0, 0.0), vec2(1.0, 0.0),
+        vec2(0.0, 1.0), vec2(1.0, 1.0)
     );
 
     void main() {
-        vec2 expanded_pos_bounds[2] = vec2[](
-            pos_bounds[0] - radius,
-            pos_bounds[1] + radius
-        );
-        float x = expanded_pos_bounds[int(gl_VertexID % 2)].x;
-        float y = expanded_pos_bounds[int(gl_VertexID < 2)].y;
+        float x = pos_bounds[int(gl_VertexID % 2)].x;
+        float y = pos_bounds[int(gl_VertexID < 2)].y;
         vf_orig_pos = vec2(x, y);
         vec3 pos = transform * vec3(vf_orig_pos, 1.0);
         gl_Position = vec4(pos.xy, 0.0, pos.z);
         vf_tex_coords = mix(tex_bounds[0], tex_bounds[1], mix_tex_coords[gl_VertexID]);
         vf_radius = radius;
-        vf_pos_bounds[0] = pos_bounds[0];
-        vf_pos_bounds[1] = pos_bounds[1];
+        vf_pos_bounds[0] = pos_bounds[0] + radius;
+        vf_pos_bounds[1] = pos_bounds[1] - radius;
     }
     "#;
 
@@ -62,11 +57,10 @@ mod shader {
     uniform sampler2D tex;
 
     void main() {
-        const float max_distance = 0.1;
-        vec2 offset = clamp(vf_orig_pos, vf_pos_bounds[0], vf_pos_bounds[1]);
-        // division could be replaced by some fancy math
+        const float max_distance = 0.01;
+        vec2 offset = clamp(vf_orig_pos, vf_pos_bounds[0], vf_pos_bounds[1]) - vf_orig_pos;
         vec2 normalized_offset = offset / vf_radius;
-        float distance = dot(normalized_offset, normalized_offset);
+        float distance = length(normalized_offset);
         float alpha = 1.0 - smoothstep(1.0, 1.0 + max_distance, distance);
 
         color = texture(tex, vf_tex_coords);
@@ -82,7 +76,7 @@ pub struct QuadRenderer {
 }
 
 impl QuadRenderer {
-    pub const FULL_WINDOW_POS_BOUNDS: [Vec2; 2] = [Vec2::new(-1.0, 1.0), Vec2::new(1.0, -1.0)];
+    pub const FULL_WINDOW_POS_BOUNDS: [Vec2; 2] = [Vec2::new(-1.0, -1.0), Vec2::new(1.0, 1.0)];
 
     pub fn new(
         dummy_vao: VertexArrayHandle,
@@ -109,7 +103,7 @@ impl QuadRenderer {
         pos_bounds: &[Vec2; 2],
         tex_bounds: &[Vec2; 2],
         radius: &Vec2,
-        transform: &Matrix3<f32>,
+        transform: &Mat3,
     ) {
         let vao = self.vertex_array.get(context);
         let program = self.program.get(context);
@@ -156,7 +150,7 @@ impl QuadRenderer {
                 ),
                 1,
                 gl::FALSE,
-                transform.as_ptr() as *const _,
+                transform as *const Mat3 as *const f32,
             );
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, texture);

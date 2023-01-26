@@ -79,6 +79,10 @@ impl SendDrawContext {
             gl_display.get_proc_address(symbol.as_c_str()).cast()
         });
         enable_gl_debug_callback();
+        unsafe {
+            gl::Enable(gl::BLEND);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+        }
         let gl_context = current_gl_context
             .make_not_current()
             .context("unable to make GL context not current")?;

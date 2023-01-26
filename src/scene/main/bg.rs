@@ -148,7 +148,7 @@ impl Background {
         if let Some(join_load_texture) = self.join_load_texture.take() {
             match join_load_texture.try_join() {
                 TryJoinTaskResult::JoinedResultTaken => {
-                    panic!("task result taken (task probably panicked)")
+                    tracing::warn!("Texture loading task failed, the error (if present) was reported to the event loop via a GameUserEvent::Error event");
                 }
                 TryJoinTaskResult::NotJoined => {
                     self.join_load_texture = Some(join_load_texture);

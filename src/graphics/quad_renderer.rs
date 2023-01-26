@@ -18,9 +18,11 @@ mod shader {
 
     out vec2 vf_orig_pos;
     out vec2 vf_tex_coords;
+    out vec2 vf_radius;
+    out vec2 vf_pos_bounds[2];
 
-    uniform mediump vec2 pos_bounds[2];
-    uniform mediump vec2 radius;
+    uniform vec2 pos_bounds[2];
+    uniform vec2 radius;
     uniform vec2 tex_bounds[2];
     uniform mat3 transform;
 
@@ -40,6 +42,9 @@ mod shader {
         vec3 pos = transform * vec3(vf_orig_pos, 1.0);
         gl_Position = vec4(pos.xy, 0.0, pos.z);
         vf_tex_coords = mix(tex_bounds[0], tex_bounds[1], mix_tex_coords[gl_VertexID]);
+        vf_radius = radius;
+        vf_pos_bounds[0] = pos_bounds[0];
+        vf_pos_bounds[1] = pos_bounds[1];
     }
     "#;
 
@@ -49,17 +54,18 @@ mod shader {
 
     in vec2 vf_orig_pos;
     in vec2 vf_tex_coords;
+    in vec2 vf_radius;
+    in vec2 vf_pos_bounds[2];
+
     out vec4 color;
 
-    uniform vec2 pos_bounds[2];
-    uniform vec2 radius;
     uniform sampler2D tex;
 
     void main() {
         const float max_distance = 0.1;
-        vec2 offset = clamp(vf_orig_pos, pos_bounds[0], pos_bounds[1]);
+        vec2 offset = clamp(vf_orig_pos, vf_pos_bounds[0], vf_pos_bounds[1]);
         // division could be replaced by some fancy math
-        vec2 normalized_offset = offset / radius;
+        vec2 normalized_offset = offset / vf_radius;
         float distance = dot(normalized_offset, normalized_offset);
         float alpha = 1.0 - smoothstep(1.0, 1.0 + max_distance, distance);
 

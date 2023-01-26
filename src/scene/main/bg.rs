@@ -1,5 +1,5 @@
-use anyhow::{bail, Context};
-use cgmath::{Zero, Matrix3, SquareMatrix};
+use anyhow::Context;
+use cgmath::{Matrix3, SquareMatrix, Zero};
 use glutin::prelude::GlConfig;
 use image::EncodableLayout;
 use winit::{
@@ -14,7 +14,7 @@ use crate::{
         executor::GameServerExecutor,
         main_ctx::MainContext,
         server::{GameServerSendChannel, ServerChannels},
-        task::{Cancellable, CancellationToken, JoinToken, Joinable, TryJoinTaskResult},
+        task::{JoinToken, Joinable, TryJoinTaskResult},
     },
     graphics::{
         blur::BlurRenderer,
@@ -32,7 +32,6 @@ pub struct Background {
     pub blur: BlurRenderer,
     pub renderer: QuadRenderer,
     pub texture: TextureHandle,
-    pub cancel_load_texture: CancellationToken,
     pub join_load_texture: Option<JoinToken<anyhow::Result<PhysicalSize<u32>>>>,
     pub texture_dimensions: Option<PhysicalSize<u32>>,
     pub screen_framebuffer: DefaultTextureFramebuffer,
@@ -51,7 +50,7 @@ impl Background {
             DefaultTextureFramebuffer::new(&mut main_ctx.channels.draw, "screen framebuffer")
                 .context("screen framebuffer initialization failed")?;
         screen_framebuffer.resize(&mut main_ctx.channels.draw, main_ctx.display.get_size())?;
-        let (texture, cancel_load_texture, join_load_texture) = Self::init_test_texture(
+        let (texture, join_load_texture) = Self::init_test_texture(
             executor,
             &mut main_ctx.channels,
             blur.clone(),
@@ -62,7 +61,6 @@ impl Background {
             texture,
             blur,
             renderer,
-            cancel_load_texture,
             join_load_texture: Some(join_load_texture),
             texture_dimensions: None,
             screen_framebuffer,
@@ -70,41 +68,26 @@ impl Background {
     }
 
     #[allow(unused_mut)]
-    #[allow(clippy::type_complexity)]
     fn init_test_texture(
         executor: &mut GameServerExecutor,
         channels: &mut ServerChannels,
         blur: BlurRenderer,
         renderer: QuadRenderer,
-    ) -> anyhow::Result<(
-        TextureHandle,
-        CancellationToken,
-        JoinToken<anyhow::Result<PhysicalSize<u32>>>,
-    )> {
+    ) -> anyhow::Result<(TextureHandle, JoinToken<anyhow::Result<PhysicalSize<u32>>>)> {
         let test_texture =
             TextureHandle::new_args(&mut channels.draw, "test texture", TextureType::E2D)?;
 
         let channel = channels.draw.clone_sender();
-        let cancel_token = CancellationToken::new();
         let (sender, join_token) = JoinToken::new();
 
-        executor.execute_blocking_task(enclose!((test_texture, cancel_token) move || {
+        executor.execute_blocking_task(enclose!((test_texture) move || {
             let result: anyhow::Result<PhysicalSize<u32>> = (|| {
-                let check_cancel = || {
-                    if cancel_token.is_cancelled() {
-                        bail!("cancelled")
-                    }
-
-                    Ok(())
-                };
-                check_cancel()?;
                 let img = image::io::Reader::open("BG.jpg")
                     .context("unable to load test texture")?
                     .decode()
                     .context("unable to decode test texture")?
                     .into_rgba8();
                 let img_size = PhysicalSize::new(img.width(), img.height());
-                check_cancel()?;
 
                 GameServerExecutor::execute_draw_event(&channel, move |context, root| {
                     let tex_handle = test_texture.get(context);
@@ -149,7 +132,7 @@ impl Background {
             })();
             sender.send(result).log_warn();
         }));
-        Ok((test_texture, cancel_token, join_token))
+        Ok((test_texture, join_token))
     }
 
     fn resize(
@@ -255,15 +238,12 @@ impl Background {
                     let new_abs = 1.0 - (1.0 - abs).powf(3.0);
                     sign * new_abs
                 });
-                GameServerExecutor::execute_draw_event(
-                    &main_ctx.channels.draw,
-                    move |_, root| {
-                        if let Some(background) = root.background.as_mut() {
-                            background.set_offset(offset);
-                        }
-                        []
-                    },
-                )?;
+                GameServerExecutor::execute_draw_event(&main_ctx.channels.draw, move |_, root| {
+                    if let Some(background) = root.background.as_mut() {
+                        background.set_offset(offset);
+                    }
+                    []
+                })?;
             }
 
             _ => {}

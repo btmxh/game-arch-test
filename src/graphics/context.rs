@@ -6,6 +6,7 @@ use crate::{
     },
     graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
     scene::draw::DrawRoot,
+    ui::utils::geom::UISize,
 };
 use std::{ffi::CString, num::NonZeroU32};
 
@@ -29,6 +30,7 @@ pub struct DrawContext {
     pub gl_display: Display,
     pub gl_config: Config,
     pub display_size: PhysicalSize<NonZeroU32>,
+    pub ui_size: UISize,
     pub display_handles: SendRawHandle,
     pub base: BaseGameServer<SendMsg, RecvMsg>,
 }
@@ -40,6 +42,7 @@ pub struct SendDrawContext {
     pub gl_display: Display,
     pub gl_config: Config,
     pub display_size: PhysicalSize<NonZeroU32>,
+    pub ui_size: UISize,
     pub display_handles: SendRawHandle,
     pub base: BaseGameServer<SendMsg, RecvMsg>,
 }
@@ -81,7 +84,7 @@ impl SendDrawContext {
         enable_gl_debug_callback();
         unsafe {
             gl::Enable(gl::BLEND);
-            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA)
         }
         let gl_context = current_gl_context
             .make_not_current()
@@ -93,11 +96,16 @@ impl SendDrawContext {
                 height: NonZeroU32::new(size.height).expect("display height is 0"),
             }
         };
+        let ui_size = display
+            .get_size()
+            .to_logical(display.get_scale_factor())
+            .into();
         Ok((
             Self {
                 base,
                 display_handles: display.get_raw_handles(),
                 display_size,
+                ui_size,
                 gl_display,
                 gl_context,
                 gl_config,
@@ -150,7 +158,7 @@ impl DrawContext {
         Ok(())
     }
 
-    pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>) {
+    pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>, ui_size: UISize) {
         self.gl_surface
             .resize(&self.gl_context, new_size.width, new_size.height);
         unsafe {
@@ -162,6 +170,7 @@ impl DrawContext {
             );
         }
         self.display_size = new_size;
+        self.ui_size = ui_size;
     }
 
     pub fn to_send(self) -> anyhow::Result<SendDrawContext> {
@@ -176,6 +185,7 @@ impl DrawContext {
             gl_display: self.gl_display,
             display_handles: self.display_handles,
             display_size: self.display_size,
+            ui_size: self.ui_size,
             swap_interval: self.swap_interval,
             handles: self.handles.to_send(),
         })
@@ -217,6 +227,7 @@ impl SendDrawContext {
             gl_surface,
             display_handles: self.display_handles,
             display_size: self.display_size,
+            ui_size: self.ui_size,
             swap_interval: self.swap_interval,
             handles: self.handles.to_nonsend(),
         })

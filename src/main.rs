@@ -16,6 +16,7 @@ pub mod events;
 pub mod exec;
 pub mod graphics;
 pub mod scene;
+pub mod ui;
 pub mod utils;
 
 fn main() -> anyhow::Result<()> {

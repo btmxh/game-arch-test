@@ -3,6 +3,7 @@ use anyhow::Context;
 use crate::{
     events::GameEvent,
     exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    ui::{self, scenes::UIEventScene},
 };
 
 use self::{bg::Background, core::Core, handle_resize::HandleResize, utility::Utility};
@@ -17,6 +18,7 @@ pub struct EventRoot {
     core: Core,
     background: Background,
     utility: Utility,
+    ui: ui::scenes::UIEventScene,
 }
 
 impl EventRoot {
@@ -35,6 +37,7 @@ impl EventRoot {
                 .context("unable to initialize background scene")?,
             utility: Utility::new(executor, main_ctx)
                 .context("unable to initialize utility scene")?,
+            ui: UIEventScene::new(executor, main_ctx),
         })
     }
 
@@ -54,7 +57,8 @@ impl EventRoot {
             }
         } || self.core.handle_event(executor, main_ctx, &event)?
             || self.background.handle_event(executor, main_ctx, &event)?
-            || self.utility.handle_event(executor, main_ctx, &event)?;
+            || self.utility.handle_event(executor, main_ctx, &event)?
+            || self.ui.handle_event(executor, main_ctx, &event)?;
         Ok(())
     }
 }

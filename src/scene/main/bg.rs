@@ -209,7 +209,10 @@ impl Background {
         event: &GameEvent,
     ) -> anyhow::Result<bool> {
         match event {
-            GameEvent::UserEvent(GameUserEvent::CheckedResize(PhysicalSize { width, height })) => {
+            GameEvent::UserEvent(GameUserEvent::CheckedResize {
+                display_size: PhysicalSize { width, height },
+                ..
+            }) => {
                 self.resize(
                     main_ctx,
                     PhysicalSize {

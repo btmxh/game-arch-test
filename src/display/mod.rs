@@ -152,4 +152,8 @@ impl Display {
     pub fn get_size(&self) -> PhysicalSize<u32> {
         self.window.inner_size()
     }
+
+    pub fn get_scale_factor(&self) -> f64 {
+        self.window.scale_factor()
+    }
 }

@@ -8,6 +8,7 @@ use winit::{
 use crate::{
     events::{GameEvent, GameUserEvent},
     exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    ui::utils::geom::UISize,
     utils::args::args,
 };
 
@@ -17,7 +18,7 @@ pub struct HandleResize {
     // for resize throttling
     // port of https://blog.webdevsimplified.com/2022-03/debounce-vs-throttle/
     resize_should_wait: bool,
-    resize_size: Option<PhysicalSize<NonZeroU32>>,
+    resize_size: Option<(PhysicalSize<NonZeroU32>, UISize)>,
 }
 
 impl HandleResize {
@@ -33,24 +34,28 @@ impl HandleResize {
         executor: &mut GameServerExecutor,
         main_ctx: &mut MainContext,
         root_scene: &mut EventRoot,
-        size: PhysicalSize<NonZeroU32>,
+        display_size: PhysicalSize<NonZeroU32>,
+        ui_size: UISize,
         block: bool,
     ) -> anyhow::Result<()> {
         if block {
             executor.execute_draw_sync(&mut main_ctx.channels.draw, move |context, _| {
-                context.resize(size);
+                context.resize(display_size, ui_size);
                 Ok(())
             })?;
         } else {
             GameServerExecutor::execute_draw_event(&main_ctx.channels.draw, move |context, _| {
-                context.resize(size);
+                context.resize(display_size, ui_size);
                 []
             })?;
         }
         root_scene.handle_event(
             executor,
             main_ctx,
-            GameEvent::UserEvent(GameUserEvent::CheckedResize(size)),
+            GameEvent::UserEvent(GameUserEvent::CheckedResize {
+                display_size,
+                ui_size,
+            }),
         )?;
         Ok(())
     }
@@ -61,8 +66,8 @@ impl HandleResize {
         executor: &mut GameServerExecutor,
         root_scene: &mut EventRoot,
     ) -> anyhow::Result<()> {
-        if let Some(size) = self.resize_size.take() {
-            HandleResize::resize(executor, main_ctx, root_scene, size, false)?;
+        if let Some((size, ui_size)) = self.resize_size.take() {
+            Self::resize(executor, main_ctx, root_scene, size, ui_size, false)?;
             self.resize_size = None;
             Self::set_timeout(main_ctx)?;
         } else {
@@ -102,14 +107,15 @@ impl HandleResize {
             } if main_ctx.display.get_window_id() == *window_id => {
                 let width = NonZeroU32::new(size.width);
                 let height = NonZeroU32::new(size.height);
+                let ui_size = size.to_logical(main_ctx.display.get_scale_factor()).into();
                 let size =
                     width.and_then(|width| height.map(|height| PhysicalSize::new(width, height)));
                 if let Some(size) = size {
                     if args().throttle_resize {
                         if self.resize_should_wait {
-                            self.resize_size = Some(size);
+                            self.resize_size = Some((size, ui_size));
                         } else {
-                            Self::resize(executor, main_ctx, root_scene, size, false)?;
+                            Self::resize(executor, main_ctx, root_scene, size, ui_size, false)?;
                             self.resize_should_wait = true;
                             Self::set_timeout(main_ctx)?;
                         }
@@ -119,6 +125,7 @@ impl HandleResize {
                             main_ctx,
                             root_scene,
                             size,
+                            ui_size,
                             !args().block_event_loop,
                         )?;
                     }

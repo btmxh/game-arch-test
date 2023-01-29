@@ -11,6 +11,7 @@ use crate::{
         main_ctx::MainContext,
     },
     scene::main::EventRoot,
+    ui::utils::geom::UISize,
 };
 
 pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
@@ -28,7 +29,10 @@ pub enum GameUserEvent {
     VSyncSet(Option<SwapInterval>, Option<DispatchId>),
     ExecuteReturn(ExecuteReturnEvent, Option<DispatchId>),
     Error(anyhow::Error),
-    CheckedResize(PhysicalSize<NonZeroU32>),
+    CheckedResize {
+        display_size: PhysicalSize<NonZeroU32>,
+        ui_size: UISize,
+    },
 }
 
 #[derive(Debug)]

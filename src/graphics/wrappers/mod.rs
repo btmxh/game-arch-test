@@ -9,10 +9,7 @@ use sendable::{send_rc::PostSend, SendRc};
 use crate::{
     enclose,
     events::GameUserEvent,
-    exec::{
-        executor::GameServerExecutor,
-        server::{draw, GameServerSendChannel, ServerSendChannel},
-    },
+    exec::server::{draw, GameServerSendChannel, ServerSendChannel},
     utils::{error::ResultExt, send_sync::PhantomUnsync},
 };
 
@@ -120,19 +117,16 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
         A: Send,
     {
         let slf = unsafe { Self::new_uninit(draw) };
-        GameServerExecutor::execute_draw_event(
-            draw,
-            enclose!((slf) move |context, _| {
-                if let Some(container) = T::get_container_mut(context) {
-                    return GLHandle::<T, A>::new_args(name, args)
-                        .map(|handle| container.insert(&slf, handle))
-                        .err()
-                        .map(GameUserEvent::Error);
-                }
+        draw.execute_draw_event(enclose!((slf) move |context, _| {
+            if let Some(container) = T::get_container_mut(context) {
+                return GLHandle::<T, A>::new_args(name, args)
+                    .map(|handle| container.insert(&slf, handle))
+                    .err()
+                    .map(GameUserEvent::Error);
+            }
 
-                None
-            }),
-        )?;
+            None
+        }))?;
         Ok(slf)
     }
 

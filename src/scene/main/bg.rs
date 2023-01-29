@@ -11,7 +11,6 @@ use crate::{
     enclose,
     events::{GameEvent, GameUserEvent},
     exec::{
-        executor::GameServerExecutor,
         main_ctx::MainContext,
         server::GameServerSendChannel,
         task::{JoinToken, Joinable, TryJoinTaskResult},
@@ -37,10 +36,7 @@ pub struct Background {
 }
 
 impl Background {
-    pub fn new(
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-    ) -> anyhow::Result<Self> {
+    pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
         let renderer = QuadRenderer::new(main_ctx.dummy_vao.clone(), &mut main_ctx.channels.draw)
             .context("quad renderer initialization failed")?;
         let blur = BlurRenderer::new(main_ctx.dummy_vao.clone(), &mut main_ctx.channels.draw)
@@ -50,7 +46,7 @@ impl Background {
                 .context("screen framebuffer initialization failed")?;
         screen_framebuffer.resize(&mut main_ctx.channels.draw, main_ctx.display.get_size())?;
         let (texture, join_load_texture) =
-            Self::init_test_texture(executor, main_ctx, blur.clone(), renderer.clone())
+            Self::init_test_texture(main_ctx, blur.clone(), renderer.clone())
                 .context("unable to initialize test texture")?;
         Ok(Self {
             texture,
@@ -64,7 +60,6 @@ impl Background {
 
     #[allow(unused_mut)]
     fn init_test_texture(
-        executor: &mut GameServerExecutor,
         main_ctx: &mut MainContext,
         blur: BlurRenderer,
         renderer: QuadRenderer,
@@ -79,7 +74,7 @@ impl Background {
         let proxy = main_ctx.event_loop_proxy.clone();
         let (sender, join_token) = JoinToken::new();
 
-        executor.execute_blocking_task(enclose!((test_texture) move || {
+        main_ctx.execute_blocking_task(enclose!((test_texture) move || {
             let result: anyhow::Result<PhysicalSize<u32>> = (|| {
                 let img = image::io::Reader::open("BG.jpg")
                     .context("unable to load test texture")?
@@ -88,7 +83,7 @@ impl Background {
                     .into_rgba8();
                 let img_size = PhysicalSize::new(img.width(), img.height());
 
-                GameServerExecutor::execute_draw_event(&channel, move |context, root| {
+                channel.execute_draw_event(move |context, root| {
                     let tex_handle = test_texture.get(context);
                     tex_handle.bind();
                     unsafe {
@@ -122,7 +117,7 @@ impl Background {
 
                     root.initialize_background(blur, renderer).log_error();
 
-                    [GameUserEvent::Execute(Box::new(|ctx, _, root| {
+                    [GameUserEvent::Execute(Box::new(|ctx, root| {
                         root.background.resize(ctx, ctx.display.get_size(), 1.0)
                     }))]
                 })?;
@@ -162,9 +157,10 @@ impl Background {
                 let screen_framebuffer = self.screen_framebuffer.framebuffer.clone();
                 let renderer = self.renderer.clone();
                 let texture = self.texture.clone();
-                GameServerExecutor::execute_draw_event(
-                    &main_ctx.channels.draw,
-                    move |context, _| {
+                main_ctx
+                    .channels
+                    .draw
+                    .execute_draw_event(move |context, _| {
                         screen_framebuffer.get(context).bind();
                         let viewport_size = context.display_size;
                         let vw = viewport_size.width.get() as f32;
@@ -188,8 +184,7 @@ impl Background {
                         );
                         Framebuffer::unbind_static();
                         []
-                    },
-                )?;
+                    })?;
             }
             self.blur.redraw(
                 &mut main_ctx.channels.draw,
@@ -204,7 +199,6 @@ impl Background {
 
     pub fn handle_event(
         &mut self,
-        _executor: &mut GameServerExecutor,
         main_ctx: &mut MainContext,
         event: &GameEvent,
     ) -> anyhow::Result<bool> {
@@ -244,7 +238,7 @@ impl Background {
                 }
                 offset.x = interpolate(offset.x);
                 offset.y = interpolate(offset.y);
-                GameServerExecutor::execute_draw_event(&main_ctx.channels.draw, move |_, root| {
+                main_ctx.channels.draw.execute_draw_event(move |_, root| {
                     if let Some(background) = root.background.as_mut() {
                         background.set_offset(offset);
                     }

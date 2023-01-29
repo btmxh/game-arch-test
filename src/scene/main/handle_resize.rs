@@ -7,7 +7,7 @@ use winit::{
 
 use crate::{
     events::{GameEvent, GameUserEvent},
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    exec::main_ctx::MainContext,
     ui::utils::geom::UISize,
     utils::args::args,
 };
@@ -23,7 +23,7 @@ pub struct HandleResize {
 
 impl HandleResize {
     const THROTTLE_DURATION: Duration = Duration::from_millis(100);
-    pub fn new(_: &mut GameServerExecutor, _: &mut MainContext) -> anyhow::Result<Self> {
+    pub fn new(_: &mut MainContext) -> anyhow::Result<Self> {
         Ok(Self {
             resize_should_wait: false,
             resize_size: None,
@@ -31,7 +31,6 @@ impl HandleResize {
     }
 
     fn resize(
-        executor: &mut GameServerExecutor,
         main_ctx: &mut MainContext,
         root_scene: &mut EventRoot,
         display_size: PhysicalSize<NonZeroU32>,
@@ -39,18 +38,20 @@ impl HandleResize {
         block: bool,
     ) -> anyhow::Result<()> {
         if block {
-            executor.execute_draw_sync(&mut main_ctx.channels.draw, move |context, _| {
+            main_ctx.execute_draw_sync(move |context, _| {
                 context.resize(display_size, ui_size);
                 Ok(())
             })?;
         } else {
-            GameServerExecutor::execute_draw_event(&main_ctx.channels.draw, move |context, _| {
-                context.resize(display_size, ui_size);
-                []
-            })?;
+            main_ctx
+                .channels
+                .draw
+                .execute_draw_event(move |context, _| {
+                    context.resize(display_size, ui_size);
+                    []
+                })?;
         }
         root_scene.handle_event(
-            executor,
             main_ctx,
             GameEvent::UserEvent(GameUserEvent::CheckedResize {
                 display_size,
@@ -63,11 +64,11 @@ impl HandleResize {
     fn resize_timeout_func(
         &mut self,
         main_ctx: &mut MainContext,
-        executor: &mut GameServerExecutor,
+
         root_scene: &mut EventRoot,
     ) -> anyhow::Result<()> {
         if let Some((size, ui_size)) = self.resize_size.take() {
-            Self::resize(executor, main_ctx, root_scene, size, ui_size, false)?;
+            Self::resize(main_ctx, root_scene, size, ui_size, false)?;
             self.resize_size = None;
             Self::set_timeout(main_ctx)?;
         } else {
@@ -78,24 +79,21 @@ impl HandleResize {
     }
 
     fn set_timeout(main_ctx: &mut MainContext) -> anyhow::Result<()> {
-        main_ctx.set_timeout(
-            Self::THROTTLE_DURATION,
-            |main_ctx, executor, root_scene, _| {
-                if let Some(mut slf) = root_scene.handle_resize.take() {
-                    slf.resize_timeout_func(main_ctx, executor, root_scene)?;
-                    root_scene.handle_resize = Some(slf);
-                }
+        main_ctx.set_timeout(Self::THROTTLE_DURATION, |main_ctx, root_scene, _| {
+            if let Some(mut slf) = root_scene.handle_resize.take() {
+                slf.resize_timeout_func(main_ctx, root_scene)?;
+                root_scene.handle_resize = Some(slf);
+            }
 
-                Ok(())
-            },
-        )?;
+            Ok(())
+        })?;
 
         Ok(())
     }
 
     pub fn handle_event(
         &mut self,
-        executor: &mut GameServerExecutor,
+
         main_ctx: &mut MainContext,
         root_scene: &mut EventRoot,
         event: &GameEvent,
@@ -115,13 +113,12 @@ impl HandleResize {
                         if self.resize_should_wait {
                             self.resize_size = Some((size, ui_size));
                         } else {
-                            Self::resize(executor, main_ctx, root_scene, size, ui_size, false)?;
+                            Self::resize(main_ctx, root_scene, size, ui_size, false)?;
                             self.resize_should_wait = true;
                             Self::set_timeout(main_ctx)?;
                         }
                     } else {
                         Self::resize(
-                            executor,
                             main_ctx,
                             root_scene,
                             size,

@@ -10,7 +10,9 @@ use anyhow::Context;
 use glutin::config::Config;
 use winit::event_loop::EventLoopProxy;
 
-use super::{GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
+use super::{
+    GameServer, GameServerChannel, GameServerSendChannel, SendGameServer, ServerSendChannel,
+};
 
 pub type DrawCallback = dyn FnMut(&Server) -> anyhow::Result<()> + Send;
 
@@ -92,6 +94,19 @@ impl GameServerSendChannel<RecvMsg> for ServerChannel {
     }
 }
 
+fn execute_draw_event<F, R>(
+    channel: &impl GameServerSendChannel<RecvMsg>,
+    callback: F,
+) -> anyhow::Result<()>
+where
+    R: IntoIterator<Item = GameUserEvent> + Send + 'static,
+    F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
+{
+    channel.send(RecvMsg::ExecuteEvent(Box::new(
+        move |context, root_scene| Box::new(callback(context, root_scene).into_iter()),
+    )))
+}
+
 impl ServerChannel {
     pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
         self.send(RecvMsg::SetFrequencyProfiling(fp))
@@ -102,6 +117,24 @@ impl ServerChannel {
         let id = self.current_id;
         self.current_id += 1;
         id
+    }
+
+    pub fn execute_draw_event<F, R>(&self, callback: F) -> anyhow::Result<()>
+    where
+        R: IntoIterator<Item = GameUserEvent> + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
+    {
+        self::execute_draw_event(self, callback)
+    }
+}
+
+impl ServerSendChannel<RecvMsg> {
+    pub fn execute_draw_event<F, R>(&self, callback: F) -> anyhow::Result<()>
+    where
+        R: IntoIterator<Item = GameUserEvent> + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
+    {
+        self::execute_draw_event(self, callback)
     }
 }
 

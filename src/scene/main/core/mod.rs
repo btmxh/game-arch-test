@@ -1,9 +1,6 @@
 use anyhow::Context;
 
-use crate::{
-    events::GameEvent,
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
-};
+use crate::{events::GameEvent, exec::main_ctx::MainContext};
 
 use self::redraw::Redraw;
 
@@ -14,20 +11,17 @@ pub struct Core {
 }
 
 impl Core {
-    pub fn new(
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-    ) -> anyhow::Result<Self> {
+    pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
         Ok(Self {
-            redraw: Redraw::new(executor, main_ctx).context("unable to initialize redraw scene")?,
+            redraw: Redraw::new(main_ctx).context("unable to initialize redraw scene")?,
         })
     }
     pub fn handle_event(
         &mut self,
-        executor: &mut GameServerExecutor,
+
         main_ctx: &mut MainContext,
         event: &GameEvent,
     ) -> anyhow::Result<bool> {
-        self.redraw.handle_event(executor, main_ctx, event)
+        self.redraw.handle_event(main_ctx, event)
     }
 }

@@ -1,6 +1,6 @@
 use winit::dpi::PhysicalSize;
 
-use crate::exec::{executor::GameServerExecutor, server::draw};
+use crate::exec::server::draw;
 
 use super::wrappers::{
     framebuffer::{DefaultTextureFramebuffer, Framebuffer, FramebufferHandle},
@@ -134,7 +134,7 @@ impl BlurRenderer {
         }
 
         let slf = self.clone();
-        GameServerExecutor::execute_draw_event(draw, move |context, _| {
+        draw.execute_draw_event(move |context, _| {
             let program = slf.program.get(context);
             let vertex_array = slf.vertex_array.get(context);
             let framebuffers = slf

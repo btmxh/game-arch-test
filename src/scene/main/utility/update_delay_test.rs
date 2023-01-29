@@ -4,9 +4,7 @@ use rand::{thread_rng, Rng};
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 use crate::{
-    events::GameEvent,
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
-    scene::main::EventRoot,
+    events::GameEvent, exec::main_ctx::MainContext, scene::main::EventRoot,
     utils::clock::debug_get_time,
 };
 
@@ -16,7 +14,7 @@ pub struct UpdateDelayTest {
 }
 
 impl UpdateDelayTest {
-    pub fn new(_: &mut GameServerExecutor, _: &mut MainContext) -> anyhow::Result<Self> {
+    pub fn new(_: &mut MainContext) -> anyhow::Result<Self> {
         Ok(Self {
             num_tests: 0,
             running_avg: 0.0,
@@ -33,17 +31,13 @@ impl UpdateDelayTest {
         self.num_tests += 1;
     }
 
-    pub fn test(
-        &mut self,
-        _executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-    ) -> anyhow::Result<()> {
+    pub fn test(&mut self, main_ctx: &mut MainContext) -> anyhow::Result<()> {
         let time = debug_get_time();
         let test_duration = thread_rng().gen_range(5.0..10.0);
         tracing::info!("{}", time);
         main_ctx.set_timeout(
             Duration::from_secs_f64(test_duration),
-            move |_, _, root_scene, _| {
+            move |_, root_scene, _| {
                 let delay = debug_get_time() - time - test_duration;
                 let slf = Self::get(root_scene);
                 slf.add_delay(delay);
@@ -57,7 +51,7 @@ impl UpdateDelayTest {
 
     pub fn handle_event(
         &mut self,
-        executor: &mut GameServerExecutor,
+
         main_ctx: &mut MainContext,
         event: &GameEvent,
     ) -> anyhow::Result<bool> {
@@ -75,7 +69,7 @@ impl UpdateDelayTest {
                         ..
                     },
             } if main_ctx.display.get_window_id() == *window_id => {
-                self.test(executor, main_ctx)?;
+                self.test(main_ctx)?;
             }
 
             _ => {}

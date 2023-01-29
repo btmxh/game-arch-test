@@ -1,18 +1,13 @@
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use tracing_appender::non_blocking::WorkerGuard;
 use winit::{
     event::Event,
     event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::{
-    events::GameUserEvent,
-    graphics::context::DrawContext,
-    scene::{draw::DrawRoot, main::EventRoot},
-    utils::error::ResultExt,
-};
+use crate::{events::GameUserEvent, scene::main::EventRoot, utils::error::ResultExt};
 
 use super::{
     main_ctx::MainContext,
@@ -20,17 +15,13 @@ use super::{
         container::ServerContainer, MainRunner, Runner, RunnerId, ServerMover, ThreadRunnerHandle,
         MAIN_RUNNER_ID,
     },
-    server::{
-        audio, draw, update, GameServerChannel, GameServerSendChannel, SendGameServer, ServerKind,
-    },
-    task::TaskExecutor,
+    server::{audio, draw, update, SendGameServer, ServerKind},
     NUM_GAME_LOOPS,
 };
 
 pub struct GameServerExecutor {
     pub main_runner: MainRunner,
     thread_runners: [Option<ThreadRunnerHandle>; NUM_GAME_LOOPS],
-    task_executor: TaskExecutor,
 }
 
 impl GameServerExecutor {
@@ -100,7 +91,6 @@ impl GameServerExecutor {
                     ..Default::default()
                 },
             },
-            task_executor: TaskExecutor::new(),
         })
     }
 
@@ -119,7 +109,6 @@ impl GameServerExecutor {
     }
 
     pub fn run(
-        mut self,
         event_loop: EventLoop<GameUserEvent>,
         mut main_ctx: MainContext,
         mut root_scene: EventRoot,
@@ -130,11 +119,12 @@ impl GameServerExecutor {
             fn unused<T>(_: &T) {}
             unused(&root_scene);
             unused(&main_ctx);
-            unused(&self);
             unused(&guard);
             match event {
                 Event::MainEventsCleared => {
-                    self.main_runner
+                    main_ctx
+                        .executor
+                        .main_runner
                         .base
                         .run_single()
                         .expect("error running main runner");
@@ -143,17 +133,17 @@ impl GameServerExecutor {
                 Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
 
                 event => main_ctx
-                    .handle_event(&mut self, &mut root_scene, event)
+                    .handle_event(&mut root_scene, event)
                     .expect("error handling events"),
             }
 
             match *control_flow {
                 ControlFlow::ExitWithCode(_) => {
-                    self.stop();
+                    main_ctx.executor.stop();
                 }
 
                 _ => {
-                    *control_flow = if self.main_runner.base.container.is_empty() {
+                    *control_flow = if main_ctx.executor.main_runner.base.container.is_empty() {
                         ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
                     } else {
                         ControlFlow::Poll
@@ -161,54 +151,5 @@ impl GameServerExecutor {
                 }
             };
         })
-    }
-
-    #[allow(irrefutable_let_patterns)]
-    pub fn execute_draw_sync<F, R>(
-        &mut self,
-        channel: &mut draw::ServerChannel,
-        callback: F,
-    ) -> anyhow::Result<R>
-    where
-        R: Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> anyhow::Result<R> + Send + 'static,
-    {
-        if let Some(server) = self.main_runner.base.container.draw.as_mut() {
-            callback(&mut server.context, &mut server.root_scene)
-        } else {
-            channel.send(draw::RecvMsg::ExecuteSync(Box::new(
-                move |context, root_scene| Box::new(callback(context, root_scene)),
-            )))?;
-            if let draw::SendMsg::ExecuteSyncReturn(result) = channel.recv()? {
-                Ok(result
-                    .downcast::<anyhow::Result<R>>()
-                    .map(|bx| *bx)
-                    .map_err(|_| {
-                        anyhow::format_err!("unable to downcast callback return value")
-                    })??)
-            } else {
-                bail!("unexpected response message from thread");
-            }
-        }
-    }
-
-    pub fn execute_draw_event<F, R>(
-        channel: &impl GameServerSendChannel<draw::RecvMsg>,
-        callback: F,
-    ) -> anyhow::Result<()>
-    where
-        R: IntoIterator<Item = GameUserEvent> + Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
-    {
-        channel.send(draw::RecvMsg::ExecuteEvent(Box::new(
-            move |context, root_scene| Box::new(callback(context, root_scene).into_iter()),
-        )))
-    }
-
-    pub fn execute_blocking_task<F>(&mut self, f: F)
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        self.task_executor.execute(f)
     }
 }

@@ -3,19 +3,18 @@ use winit::event::{Event, WindowEvent};
 
 use crate::{
     events::{GameEvent, GameUserEvent},
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    exec::main_ctx::MainContext,
 };
 
 pub struct Close;
 
 impl Close {
-    pub fn new(_: &mut GameServerExecutor, _: &mut MainContext) -> anyhow::Result<Self> {
+    pub fn new(_: &mut MainContext) -> anyhow::Result<Self> {
         Ok(Self)
     }
 
     pub fn handle_event(
         &mut self,
-        _executor: &mut GameServerExecutor,
         main_ctx: &mut MainContext,
         event: &GameEvent,
     ) -> anyhow::Result<bool> {

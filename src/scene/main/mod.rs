@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use crate::{
     events::GameEvent,
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    exec::main_ctx::MainContext,
     ui::{self, scenes::UIEventScene},
 };
 
@@ -22,43 +22,37 @@ pub struct EventRoot {
 }
 
 impl EventRoot {
-    pub fn new(
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-    ) -> anyhow::Result<Self> {
+    pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
         Ok(Self {
             handle_resize: Some(
-                HandleResize::new(executor, main_ctx)
-                    .context("unable to initialize handle resize scene")?,
+                HandleResize::new(main_ctx).context("unable to initialize handle resize scene")?,
             ),
-            core: Core::new(executor, main_ctx)
-                .context("unable to initialize handle core scene")?,
-            background: Background::new(executor, main_ctx)
+            core: Core::new(main_ctx).context("unable to initialize handle core scene")?,
+            background: Background::new(main_ctx)
                 .context("unable to initialize background scene")?,
-            utility: Utility::new(executor, main_ctx)
-                .context("unable to initialize utility scene")?,
-            ui: UIEventScene::new(executor, main_ctx),
+            utility: Utility::new(main_ctx).context("unable to initialize utility scene")?,
+            ui: UIEventScene::new(main_ctx),
         })
     }
 
     pub fn handle_event(
         &mut self,
-        executor: &mut GameServerExecutor,
+
         main_ctx: &mut MainContext,
         event: GameEvent,
     ) -> anyhow::Result<()> {
         let _ = {
             if let Some(mut handle_resize) = self.handle_resize.take() {
-                let result = handle_resize.handle_event(executor, main_ctx, self, &event)?;
+                let result = handle_resize.handle_event(main_ctx, self, &event)?;
                 self.handle_resize = Some(handle_resize);
                 result
             } else {
                 false
             }
-        } || self.core.handle_event(executor, main_ctx, &event)?
-            || self.background.handle_event(executor, main_ctx, &event)?
-            || self.utility.handle_event(executor, main_ctx, &event)?
-            || self.ui.handle_event(executor, main_ctx, &event)?;
+        } || self.core.handle_event(main_ctx, &event)?
+            || self.background.handle_event(main_ctx, &event)?
+            || self.utility.handle_event(main_ctx, &event)?
+            || self.ui.handle_event(main_ctx, &event)?;
         Ok(())
     }
 }

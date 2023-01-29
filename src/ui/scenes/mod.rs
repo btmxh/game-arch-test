@@ -3,7 +3,7 @@ use winit::event::Event;
 
 use crate::{
     events::{GameEvent, GameUserEvent},
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    exec::main_ctx::MainContext,
     graphics::{context::DrawContext, quad_renderer::QuadRenderer},
     utils::error::ResultExt,
 };
@@ -25,18 +25,20 @@ pub struct UIDrawScene {
 }
 
 impl UIEventScene {
-    pub fn new(executor: &mut GameServerExecutor, main_ctx: &mut MainContext) -> Self {
+    pub fn new(main_ctx: &mut MainContext) -> Self {
         let mut slf = Self {
             center_test: center_test::EventScene::new(),
         };
-        let draw = slf.create_predraw(&mut Self::event_ctx(executor, main_ctx));
-        GameServerExecutor::execute_draw_event(&main_ctx.channels.draw, move |_, draw_root| {
-            draw_root.ui = Some(draw);
-            []
-        })
-        .log_error();
+        let draw = slf.create_predraw(&mut Self::event_ctx(main_ctx));
+        main_ctx
+            .channels
+            .draw
+            .execute_draw_event(move |_, draw_root| {
+                draw_root.ui = Some(draw);
+                []
+            })
+            .log_error();
         slf.resize(
-            executor,
             main_ctx,
             main_ctx
                 .display
@@ -58,34 +60,26 @@ impl UIEventScene {
         }
     }
 
-    fn event_ctx<'a>(
-        executor: &'a mut GameServerExecutor,
-        main_ctx: &'a mut MainContext,
-    ) -> UIEventContext<'a> {
-        UIEventContext { executor, main_ctx }
+    fn event_ctx(main_ctx: &mut MainContext) -> UIEventContext {
+        UIEventContext { main_ctx }
     }
 
     pub fn handle_event(
         &mut self,
-        executor: &mut GameServerExecutor,
+
         main_ctx: &mut MainContext,
         event: &GameEvent,
     ) -> anyhow::Result<bool> {
         if let Event::UserEvent(GameUserEvent::CheckedResize { ui_size, .. }) = event {
-            self.resize(executor, main_ctx, *ui_size)
+            self.resize(main_ctx, *ui_size)
         }
 
         Ok(false)
     }
 
-    fn resize(
-        &mut self,
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-        ui_size: UISize,
-    ) {
+    fn resize(&mut self, main_ctx: &mut MainContext, ui_size: UISize) {
         self.center_test
-            .resize(&mut Self::event_ctx(executor, main_ctx), ui_size);
+            .resize(&mut Self::event_ctx(main_ctx), ui_size);
     }
 }
 

@@ -7,7 +7,6 @@ use winit::dpi::PhysicalSize;
 use crate::{
     exec::{
         dispatch::{DispatchId, DispatchMsg},
-        executor::GameServerExecutor,
         main_ctx::MainContext,
     },
     scene::main::EventRoot,
@@ -15,10 +14,8 @@ use crate::{
 };
 
 pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
-pub type ExecuteCallback = Box<
-    dyn FnOnce(&mut MainContext, &mut GameServerExecutor, &mut EventRoot) -> anyhow::Result<()>
-        + Send,
->;
+pub type ExecuteCallback =
+    Box<dyn FnOnce(&mut MainContext, &mut EventRoot) -> anyhow::Result<()> + Send>;
 
 #[derive(Derivative)]
 #[derivative(Debug)]

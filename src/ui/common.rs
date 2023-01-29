@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    exec::main_ctx::MainContext,
     graphics::{context::DrawContext, quad_renderer::QuadRenderer},
     utils::mutex::Mutex,
 };
@@ -16,7 +16,6 @@ use derive_more::{Deref, DerefMut};
 use glam::Mat3;
 
 pub struct UIEventContext<'a> {
-    pub executor: &'a mut GameServerExecutor,
     pub main_ctx: &'a mut MainContext,
 }
 

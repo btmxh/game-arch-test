@@ -66,7 +66,7 @@ pub fn draw(
 ) -> DrawToken {
     DrawToken {
         self_opacity: parent_opacity * **self_opacity,
-        self_transform: parent_transform.mul_mat3(&**self_transform),
+        self_transform: parent_transform.mul_mat3(self_transform),
     }
 }
 

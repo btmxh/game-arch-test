@@ -47,7 +47,7 @@ impl Background {
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[0], BOUNDS_POS_1[0]),
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[1], BOUNDS_POS_1[1]),
             ];
-            let angle = self.clock.now() as f32;
+            let angle = self.clock.now() as f32 * 0.01;
             let transform = Mat3::from_angle(angle);
             let radius = Vec2::new(1.0, 1.0);
             self.renderer.draw(

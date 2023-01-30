@@ -56,9 +56,9 @@ impl GameServerExecutor {
     ) -> anyhow::Result<()> {
         let server = self
             .move_server_from(from, kind)
-            .with_context(|| format!("unable to move {:?} server from runner id {}", kind, from))?;
+            .with_context(|| format!("unable to move {kind:?} server from runner id {from}"))?;
         self.move_server_to(to, server)
-            .with_context(|| format!("unable to move {:?} server to runner id {}", kind, to))
+            .with_context(|| format!("unable to move {kind:?} server to runner id {to}"))
     }
 
     pub fn set_frequency(&mut self, id: RunnerId, frequency: f64) -> anyhow::Result<()> {

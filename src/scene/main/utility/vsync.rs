@@ -28,7 +28,7 @@ impl VSync {
         };
         main_ctx.channels.draw.execute_draw_event(move |s, _| {
             s.set_swap_interval(interval)
-                .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
+                .with_context(|| format!("unable to set vsync swap interval to {interval:?}"))
                 .log_error();
             tracing::info!(
                 "VSync swap interval set to {} ({:?})",

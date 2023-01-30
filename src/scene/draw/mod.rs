@@ -1,16 +1,15 @@
-use crate::{
-    graphics::{blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer},
-    ui::scenes::UIDrawScene,
-};
+use anyhow::Context;
 
-use self::{bg::Background, clear::ClearScreen};
+use crate::{graphics::context::DrawContext, ui::scenes::UIDrawScene};
 
-pub mod bg;
+use self::{clear::ClearScreen, content::Content};
+
 pub mod clear;
+pub mod content;
 
 pub struct DrawRoot {
     clear: ClearScreen,
-    pub background: Option<Background>,
+    pub content: Content,
     pub ui: Option<UIDrawScene>,
 }
 
@@ -18,29 +17,17 @@ impl DrawRoot {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
             clear: ClearScreen,
-            background: None,
+            content: Content::new().context("unable to initialize content scene")?,
             ui: None,
         })
     }
 
     pub fn draw(&mut self, context: &mut DrawContext) -> anyhow::Result<()> {
         self.clear.draw(context);
-        self.background
-            .as_mut()
-            .map(|bg| bg.draw(context))
-            .transpose()?;
+        self.content.draw(context)?;
         if let Some(ui) = self.ui.as_mut() {
             ui.draw(context);
         }
-        Ok(())
-    }
-
-    pub fn initialize_background(
-        &mut self,
-        blur: BlurRenderer,
-        renderer: QuadRenderer,
-    ) -> anyhow::Result<()> {
-        self.background = Some(Background::new(blur, renderer));
         Ok(())
     }
 }

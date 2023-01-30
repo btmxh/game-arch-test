@@ -6,9 +6,9 @@ use crate::{
     ui::{self, scenes::UIEventScene},
 };
 
-use self::{bg::Background, core::Core, handle_resize::HandleResize, utility::Utility};
+use self::{content::Content, core::Core, handle_resize::HandleResize, utility::Utility};
 
-pub mod bg;
+pub mod content;
 pub mod core;
 pub mod handle_resize;
 pub mod utility;
@@ -16,7 +16,7 @@ pub mod utility;
 pub struct EventRoot {
     handle_resize: Option<HandleResize>,
     core: Core,
-    background: Background,
+    content: Content,
     utility: Utility,
     ui: ui::scenes::UIEventScene,
 }
@@ -28,8 +28,7 @@ impl EventRoot {
                 HandleResize::new(main_ctx).context("unable to initialize handle resize scene")?,
             ),
             core: Core::new(main_ctx).context("unable to initialize handle core scene")?,
-            background: Background::new(main_ctx)
-                .context("unable to initialize background scene")?,
+            content: Content::new(main_ctx).context("unable to initialize content scene")?,
             utility: Utility::new(main_ctx).context("unable to initialize utility scene")?,
             ui: UIEventScene::new(main_ctx),
         })
@@ -37,7 +36,6 @@ impl EventRoot {
 
     pub fn handle_event(
         &mut self,
-
         main_ctx: &mut MainContext,
         event: GameEvent,
     ) -> anyhow::Result<()> {
@@ -50,7 +48,7 @@ impl EventRoot {
                 false
             }
         } || self.core.handle_event(main_ctx, &event)?
-            || self.background.handle_event(main_ctx, &event)?
+            || self.content.handle_event(main_ctx, &event)
             || self.utility.handle_event(main_ctx, &event)?
             || self.ui.handle_event(main_ctx, &event)?;
         Ok(())

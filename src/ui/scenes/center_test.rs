@@ -215,13 +215,12 @@ impl EventScene {
     pub fn relocate(&mut self, ctx: &mut UIEventContext, new_pos: UIPos) {
         let mut child_state = self.child.lock_state();
         self.container_state
-            .relocate(ctx, new_pos, &mut *child_state);
+            .relocate(ctx, new_pos, &mut child_state);
     }
 
     pub fn resize(&mut self, ctx: &mut UIEventContext, new_size: UISize) {
         let mut child_state = self.child.lock_state();
-        self.container_state
-            .resize(ctx, new_size, &mut *child_state);
+        self.container_state.resize(ctx, new_size, &mut child_state);
     }
 }
 

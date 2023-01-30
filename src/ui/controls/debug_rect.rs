@@ -43,7 +43,7 @@ impl State {
             Vec2::new(-1.0, -1.0),
         );
         let transform = parent_transform
-            .mul_mat3(&**self_transform)
+            .mul_mat3(self_transform)
             .mul_mat3(&base_transform);
         // renderer does not support custom opacity
         let _opacity = parent_opacity * **self_opacity;

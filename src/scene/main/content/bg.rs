@@ -115,10 +115,10 @@ impl Background {
                         gl::GenerateMipmap(gl::TEXTURE_2D);
                     };
 
-                    root.initialize_background(blur, renderer).log_error();
+                    root.content.initialize_background(blur, renderer).log_error();
 
                     [GameUserEvent::Execute(Box::new(|ctx, root| {
-                        root.background.resize(ctx, ctx.display.get_size(), 1.0)
+                        root.content.background.resize(ctx, ctx.display.get_size(), 1.0)
                     }))]
                 })?;
 
@@ -239,7 +239,7 @@ impl Background {
                 offset.x = interpolate(offset.x);
                 offset.y = interpolate(offset.y);
                 main_ctx.channels.draw.execute_draw_event(move |_, root| {
-                    if let Some(background) = root.background.as_mut() {
+                    if let Some(background) = root.content.background.as_mut() {
                         background.set_offset(offset);
                     }
                     []

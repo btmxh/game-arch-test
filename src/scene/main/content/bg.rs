@@ -23,15 +23,22 @@ use crate::{
             texture::{TextureHandle, TextureType},
         },
     },
+    scene::draw::DrawRoot,
     utils::error::ResultExt,
 };
+
+use crate::scene::draw::content::bg::Background as BackgroundDraw;
+
+pub enum LoadTextureResult {
+    Pending(JoinToken<PhysicalSize<u32>>),
+    Done(PhysicalSize<u32>),
+}
 
 pub struct Background {
     pub blur: BlurRenderer,
     pub renderer: QuadRenderer,
     pub texture: TextureHandle,
-    pub join_load_texture: Option<JoinToken<PhysicalSize<u32>>>,
-    pub texture_dimensions: Option<PhysicalSize<u32>>,
+    pub load_texture_result: LoadTextureResult,
     pub screen_framebuffer: DefaultTextureFramebuffer,
 }
 
@@ -52,8 +59,7 @@ impl Background {
             texture,
             blur,
             renderer,
-            join_load_texture: Some(join_load_texture),
-            texture_dimensions: None,
+            load_texture_result: LoadTextureResult::Pending(join_load_texture),
             screen_framebuffer,
         })
     }
@@ -115,7 +121,7 @@ impl Background {
                         gl::GenerateMipmap(gl::TEXTURE_2D);
                     };
 
-                    root.content.initialize_background(blur, renderer).log_error();
+                    Self::get_bg_draw(root).init(renderer, blur.output_texture_handle());
 
                     [GameUserEvent::Execute(Box::new(|ctx, root| {
                         root.content.background.resize(ctx, ctx.display.get_size(), 1.0)
@@ -139,18 +145,19 @@ impl Background {
         size: PhysicalSize<u32>,
         blur_factor: f32,
     ) -> anyhow::Result<()> {
-        if let Some(join_load_texture) = self.join_load_texture.take() {
-            match join_load_texture.try_join() {
+        let texture_dimensions = match &self.load_texture_result {
+            LoadTextureResult::Pending(join_load_texture) => match join_load_texture.try_join() {
                 TryJoinTaskResult::JoinedResultTaken => {
                     tracing::warn!("Texture loading task failed, the error (if present) was reported to the event loop via a GameUserEvent::Error event");
+                    None
                 }
-                TryJoinTaskResult::NotJoined => {
-                    self.join_load_texture = Some(join_load_texture);
-                }
-                TryJoinTaskResult::Joined(result) => self.texture_dimensions = Some(result),
-            }
-        }
-        if let Some(texture_dimensions) = self.texture_dimensions {
+                TryJoinTaskResult::Joined(result) => Some(result),
+                _ => None,
+            },
+
+            LoadTextureResult::Done(result) => Some(*result),
+        };
+        if let Some(texture_dimensions) = texture_dimensions {
             self.screen_framebuffer
                 .resize(&mut main_ctx.channels.draw, size)?;
             let screen_framebuffer = self.screen_framebuffer.framebuffer.clone();
@@ -225,8 +232,8 @@ impl Background {
             } if *window_id == main_ctx.display.get_window_id() => {
                 let PhysicalSize { width, height } = main_ctx.display.get_size();
                 let mut offset = Vec2::new(
-                    ((*x as f32) / (width as f32)) * 2.0 - 1.0,
-                    -(((*y as f32) / (height as f32)) * 2.0 - 1.0),
+                    (*x as f32 / width as f32) * 2.0 - 1.0,
+                    -((*y as f32 / height as f32) * 2.0 - 1.0),
                 );
                 fn interpolate(factor: f32) -> f32 {
                     let sign = factor.signum();
@@ -237,9 +244,7 @@ impl Background {
                 offset.x = interpolate(offset.x);
                 offset.y = interpolate(offset.y);
                 main_ctx.channels.draw.execute_draw_event(move |_, root| {
-                    if let Some(background) = root.content.background.as_mut() {
-                        background.set_offset(offset);
-                    }
+                    Self::get_bg_draw(root).set_offset(offset);
                     []
                 })?;
             }
@@ -247,5 +252,9 @@ impl Background {
             _ => {}
         }
         Ok(false)
+    }
+
+    fn get_bg_draw(draw: &mut DrawRoot) -> &mut BackgroundDraw {
+        &mut draw.content.background
     }
 }

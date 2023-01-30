@@ -1,25 +1,26 @@
 use glam::{Mat3, Vec2};
 
 use crate::{
-    graphics::{blur::BlurRenderer, context::DrawContext, quad_renderer::QuadRenderer},
+    graphics::{
+        context::DrawContext, quad_renderer::QuadRenderer, wrappers::texture::TextureHandle,
+    },
     utils::clock::{Clock, SteadyClock},
 };
 
+#[derive(Default)]
 pub struct Background {
-    blur: BlurRenderer,
-    renderer: QuadRenderer,
+    render_data: Option<(QuadRenderer, TextureHandle)>,
     offset: Vec2,
     clock: SteadyClock,
 }
 
 impl Background {
-    pub fn new(blur: BlurRenderer, renderer: QuadRenderer) -> Self {
-        Self {
-            blur,
-            renderer,
-            offset: Vec2::ZERO,
-            clock: SteadyClock::new(),
-        }
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn init(&mut self, renderer: QuadRenderer, texture: TextureHandle) {
+        self.render_data = Some((renderer, texture));
     }
 
     fn lerp_vec2(amt: Vec2, min: Vec2, max: Vec2) -> Vec2 {
@@ -34,7 +35,7 @@ impl Background {
     }
 
     pub fn draw(&mut self, context: &mut DrawContext) -> anyhow::Result<()> {
-        if let Some(texture) = self.blur.output_texture_handle().try_get(context) {
+        if let Some((renderer, texture)) = self.render_data.as_mut() {
             const OFFSET_FACTOR_VECTOR: Vec2 = Vec2::new(0.995, 0.998);
             const BOUNDS_NEG_1: [Vec2; 2] = [Vec2::new(0.0, 0.0), OFFSET_FACTOR_VECTOR];
             const BOUNDS_POS_1: [Vec2; 2] = [
@@ -42,6 +43,7 @@ impl Background {
                 Vec2::new(1.0, 1.0),
             ];
             const HALF: Vec2 = Vec2::new(0.5, 0.5);
+            let texture = texture.get(context);
             let normalized_offset = self.offset.mul_add(HALF, HALF);
             let bounds = [
                 Self::lerp_vec2(normalized_offset, BOUNDS_NEG_1[0], BOUNDS_POS_1[0]),
@@ -50,7 +52,7 @@ impl Background {
             let angle = self.clock.now() as f32 * 0.01;
             let transform = Mat3::from_angle(angle);
             let radius = Vec2::new(1.0, 1.0);
-            self.renderer.draw(
+            renderer.draw(
                 context,
                 *texture,
                 &QuadRenderer::FULL_WINDOW_POS_BOUNDS,

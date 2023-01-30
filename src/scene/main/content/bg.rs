@@ -153,39 +153,37 @@ impl Background {
         if let Some(texture_dimensions) = self.texture_dimensions {
             self.screen_framebuffer
                 .resize(&mut main_ctx.channels.draw, size)?;
-            {
-                let screen_framebuffer = self.screen_framebuffer.framebuffer.clone();
-                let renderer = self.renderer.clone();
-                let texture = self.texture.clone();
-                main_ctx
-                    .channels
-                    .draw
-                    .execute_draw_event(move |context, _| {
-                        screen_framebuffer.get(context).bind();
-                        let viewport_size = context.display_size;
-                        let vw = viewport_size.width.get() as f32;
-                        let vh = viewport_size.height.get() as f32;
-                        let tw = texture_dimensions.width as f32;
-                        let th = texture_dimensions.height as f32;
-                        let var = vw / vh;
-                        let tar = tw / th;
-                        let (hw, hh) = if var < tar {
-                            (0.5 * var / tar, 0.5)
-                        } else {
-                            (0.5, 0.5 * tar / var)
-                        };
-                        renderer.draw(
-                            context,
-                            *texture.get(context),
-                            &QuadRenderer::FULL_WINDOW_POS_BOUNDS,
-                            &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
-                            &Vec2::ZERO,
-                            &Mat3::IDENTITY,
-                        );
-                        Framebuffer::unbind_static();
-                        []
-                    })?;
-            }
+            let screen_framebuffer = self.screen_framebuffer.framebuffer.clone();
+            let renderer = self.renderer.clone();
+            let texture = self.texture.clone();
+            main_ctx
+                .channels
+                .draw
+                .execute_draw_event(move |context, _| {
+                    screen_framebuffer.get(context).bind();
+                    let viewport_size = context.display_size;
+                    let vw = viewport_size.width.get() as f32;
+                    let vh = viewport_size.height.get() as f32;
+                    let tw = texture_dimensions.width as f32;
+                    let th = texture_dimensions.height as f32;
+                    let var = vw / vh;
+                    let tar = tw / th;
+                    let (hw, hh) = if var < tar {
+                        (0.5 * var / tar, 0.5)
+                    } else {
+                        (0.5, 0.5 * tar / var)
+                    };
+                    renderer.draw(
+                        context,
+                        *texture.get(context),
+                        &QuadRenderer::FULL_WINDOW_POS_BOUNDS,
+                        &[[0.5 - hw, 0.5 + hh].into(), [0.5 + hw, 0.5 - hh].into()],
+                        &Vec2::ZERO,
+                        &Mat3::IDENTITY,
+                    );
+                    Framebuffer::unbind_static();
+                    []
+                })?;
             self.blur.redraw(
                 &mut main_ctx.channels.draw,
                 size,

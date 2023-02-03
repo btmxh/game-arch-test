@@ -16,7 +16,7 @@ use derive_more::{Deref, DerefMut};
 use glam::Mat3;
 
 pub struct UIEventContext<'a> {
-    pub main_ctx: &'a mut MainContext,
+    pub main_ctx: &'a MainContext,
 }
 
 #[derive(Clone, Copy)]

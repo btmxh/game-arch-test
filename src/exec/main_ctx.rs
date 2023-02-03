@@ -11,7 +11,7 @@ use crate::{
     display::Display,
     events::{GameEvent, GameUserEvent},
     graphics::{context::DrawContext, wrappers::vertex_array::VertexArrayHandle},
-    scene::{draw::DrawRoot, main::EventRoot},
+    scene::main::EventRoot,
     utils::error::ResultExt,
 };
 
@@ -72,7 +72,7 @@ impl MainContext {
             }
 
             event => {
-                root_scene.handle_event(self, event)?;
+                root_scene.handle_event(self, event);
             }
         };
         Ok(())
@@ -103,7 +103,7 @@ impl MainContext {
     pub fn execute_draw_sync<F, R>(&mut self, callback: F) -> anyhow::Result<R>
     where
         R: Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> anyhow::Result<R> + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut Option<EventRoot>) -> anyhow::Result<R> + Send + 'static,
     {
         if let Some(server) = self.executor.main_runner.base.container.draw.as_mut() {
             callback(&mut server.context, &mut server.root_scene)

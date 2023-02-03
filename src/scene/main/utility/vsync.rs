@@ -1,27 +1,73 @@
-use std::num::NonZeroU32;
+use std::{
+    num::NonZeroU32,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use anyhow::Context;
 use glutin::surface::SwapInterval;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
-use crate::{events::GameEvent, exec::main_ctx::MainContext, utils::error::ResultExt};
+use crate::{
+    events::GameEvent,
+    exec::main_ctx::MainContext,
+    scene::{main::EventRoot, Scene},
+    utils::error::ResultExt,
+};
 
 pub struct VSync {
-    current_vsync: bool,
+    current_vsync: AtomicBool,
+}
+
+impl Scene for VSync {
+    fn handle_event<'a>(
+        self: Arc<Self>,
+        ctx: &mut MainContext,
+        _: &EventRoot,
+        event: GameEvent<'a>,
+    ) -> Option<GameEvent<'a>> {
+        match &event {
+            Event::WindowEvent {
+                window_id,
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state: ElementState::Released,
+                                virtual_keycode: Some(VirtualKeyCode::E),
+                                ..
+                            },
+                        ..
+                    },
+            } if ctx.display.get_window_id() == *window_id => {
+                self.toggle(ctx)
+                    .context("unable to toggle VSync mode")
+                    .log_warn();
+            }
+
+            _ => {}
+        };
+
+        Some(event)
+    }
 }
 
 impl VSync {
     pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
-        let mut slf = Self {
-            current_vsync: false,
+        let slf = Self {
+            current_vsync: AtomicBool::new(false),
         };
-        slf.toggle(main_ctx)?; // current_mode is now true
+        slf.toggle(main_ctx)
+            .context("unable to reset vsync to default state")?; // current_mode is now true
         Ok(slf)
     }
 
-    pub fn toggle(&mut self, main_ctx: &mut MainContext) -> anyhow::Result<()> {
-        self.current_vsync = !self.current_vsync;
-        let interval = if self.current_vsync {
+    pub fn toggle(&self, main_ctx: &mut MainContext) -> anyhow::Result<()> {
+        let current_vsync = !self.current_vsync.load(Ordering::Relaxed);
+        self.current_vsync.store(current_vsync, Ordering::Relaxed);
+        let interval = if current_vsync {
             SwapInterval::Wait(NonZeroU32::new(1).unwrap())
         } else {
             SwapInterval::DontWait
@@ -39,34 +85,5 @@ impl VSync {
         })?;
 
         Ok(())
-    }
-
-    pub fn handle_event(
-        &mut self,
-
-        main_ctx: &mut MainContext,
-        event: &GameEvent,
-    ) -> anyhow::Result<bool> {
-        match event {
-            Event::WindowEvent {
-                window_id,
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Released,
-                                virtual_keycode: Some(VirtualKeyCode::E),
-                                ..
-                            },
-                        ..
-                    },
-            } if main_ctx.display.get_window_id() == *window_id => {
-                self.toggle(main_ctx)?;
-            }
-
-            _ => {}
-        }
-
-        Ok(false)
     }
 }

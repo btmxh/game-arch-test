@@ -1,14 +1,38 @@
+use std::sync::Arc;
+
+use anyhow::Context;
 use winit::event::Event;
 
-use crate::{events::GameEvent, exec::main_ctx::MainContext, utils::args::args};
+use crate::{
+    events::GameEvent,
+    exec::main_ctx::MainContext,
+    scene::{main::EventRoot, Scene},
+    utils::{args::args, error::ResultExt},
+};
 
 pub struct Redraw;
 
-impl Redraw {
-    pub fn new(_: &mut MainContext) -> anyhow::Result<Self> {
-        Ok(Self)
-    }
+impl Scene for Redraw {
+    fn handle_event<'a>(
+        self: Arc<Self>,
+        ctx: &mut MainContext,
+        _: &EventRoot,
+        event: GameEvent<'a>,
+    ) -> Option<GameEvent<'a>> {
+        match event {
+            Event::RedrawRequested(window_id) if ctx.display.get_window_id() == window_id => {
+                Self::redraw(ctx)
+                    .context("unable to send redraw request")
+                    .log_warn();
+                None
+            }
 
+            event => Some(event),
+        }
+    }
+}
+
+impl Redraw {
     fn redraw(main_ctx: &mut MainContext) -> anyhow::Result<()> {
         if args().block_event_loop {
             // somewhat hacky way of waiting a buffer swap
@@ -26,22 +50,5 @@ impl Redraw {
         }
 
         Ok(())
-    }
-
-    pub fn handle_event(
-        &mut self,
-
-        main_ctx: &mut MainContext,
-        event: &GameEvent,
-    ) -> anyhow::Result<bool> {
-        match event {
-            Event::RedrawRequested(window_id) if main_ctx.display.get_window_id() == *window_id => {
-                Self::redraw(main_ctx)?;
-            }
-
-            _ => {}
-        }
-
-        Ok(false)
     }
 }

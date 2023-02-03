@@ -1,5 +1,6 @@
-use std::{num::NonZeroU32, time::Duration};
+use std::{num::NonZeroU32, sync::Arc, time::Duration};
 
+use anyhow::Context;
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
@@ -8,101 +9,36 @@ use winit::{
 use crate::{
     events::{GameEvent, GameUserEvent},
     exec::main_ctx::MainContext,
+    scene::Scene,
     ui::utils::geom::UISize,
-    utils::args::args,
+    utils::{args::args, error::ResultExt, mutex::Mutex},
 };
 
 use super::EventRoot;
 
-pub struct HandleResize {
+pub struct ResizeThrottleState {
     // for resize throttling
     // port of https://blog.webdevsimplified.com/2022-03/debounce-vs-throttle/
     resize_should_wait: bool,
     resize_size: Option<(PhysicalSize<NonZeroU32>, UISize)>,
 }
 
-impl HandleResize {
-    const THROTTLE_DURATION: Duration = Duration::from_millis(100);
-    pub fn new(_: &mut MainContext) -> anyhow::Result<Self> {
-        Ok(Self {
-            resize_should_wait: false,
-            resize_size: None,
-        })
-    }
+pub struct HandleResize {
+    state: Mutex<ResizeThrottleState>,
+}
 
-    fn resize(
+impl Scene for HandleResize {
+    fn handle_event<'a>(
+        self: Arc<Self>,
         main_ctx: &mut MainContext,
-        root_scene: &mut EventRoot,
-        display_size: PhysicalSize<NonZeroU32>,
-        ui_size: UISize,
-        block: bool,
-    ) -> anyhow::Result<()> {
-        if block {
-            main_ctx.execute_draw_sync(move |context, _| {
-                context.resize(display_size, ui_size);
-                Ok(())
-            })?;
-        } else {
-            main_ctx
-                .channels
-                .draw
-                .execute_draw_event(move |context, _| {
-                    context.resize(display_size, ui_size);
-                    []
-                })?;
-        }
-        root_scene.handle_event(
-            main_ctx,
-            GameEvent::UserEvent(GameUserEvent::CheckedResize {
-                display_size,
-                ui_size,
-            }),
-        )?;
-        Ok(())
-    }
-
-    fn resize_timeout_func(
-        &mut self,
-        main_ctx: &mut MainContext,
-
-        root_scene: &mut EventRoot,
-    ) -> anyhow::Result<()> {
-        if let Some((size, ui_size)) = self.resize_size.take() {
-            Self::resize(main_ctx, root_scene, size, ui_size, false)?;
-            self.resize_size = None;
-            Self::set_timeout(main_ctx)?;
-        } else {
-            self.resize_should_wait = false;
-        }
-
-        Ok(())
-    }
-
-    fn set_timeout(main_ctx: &mut MainContext) -> anyhow::Result<()> {
-        main_ctx.set_timeout(Self::THROTTLE_DURATION, |main_ctx, root_scene, _| {
-            if let Some(mut slf) = root_scene.handle_resize.take() {
-                slf.resize_timeout_func(main_ctx, root_scene)?;
-                root_scene.handle_resize = Some(slf);
-            }
-
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    pub fn handle_event(
-        &mut self,
-
-        main_ctx: &mut MainContext,
-        root_scene: &mut EventRoot,
-        event: &GameEvent,
-    ) -> anyhow::Result<bool> {
-        Ok(match event {
+        root_scene: &EventRoot,
+        event: GameEvent<'a>,
+    ) -> Option<GameEvent<'a>> {
+        match event {
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::Resized(size),
-            } if main_ctx.display.get_window_id() == *window_id => {
+            } if main_ctx.display.get_window_id() == window_id => {
                 let width = NonZeroU32::new(size.width);
                 let height = NonZeroU32::new(size.height);
                 let ui_size = size.to_logical(main_ctx.display.get_scale_factor()).into();
@@ -110,12 +46,16 @@ impl HandleResize {
                     width.and_then(|width| height.map(|height| PhysicalSize::new(width, height)));
                 if let Some(size) = size {
                     if args().throttle_resize {
-                        if self.resize_should_wait {
-                            self.resize_size = Some((size, ui_size));
+                        let mut state = self.state.lock();
+                        if state.resize_should_wait {
+                            state.resize_size = Some((size, ui_size));
                         } else {
-                            Self::resize(main_ctx, root_scene, size, ui_size, false)?;
-                            self.resize_should_wait = true;
-                            Self::set_timeout(main_ctx)?;
+                            Self::resize(main_ctx, root_scene, size, ui_size, false);
+                            state.resize_should_wait = true;
+                            self.clone()
+                                .set_timeout(main_ctx)
+                                .context("error while setting throttle timeout")
+                                .log_error();
                         }
                     } else {
                         Self::resize(
@@ -124,13 +64,91 @@ impl HandleResize {
                             size,
                             ui_size,
                             !args().block_event_loop,
-                        )?;
+                        );
                     }
                 }
-                true
+                None
             }
 
-            _ => false,
-        })
+            event => Some(event),
+        }
+    }
+
+    fn draw(self: Arc<Self>, _: &mut crate::graphics::context::DrawContext) {}
+}
+
+impl HandleResize {
+    const THROTTLE_DURATION: Duration = Duration::from_millis(100);
+    pub fn new() -> Self {
+        Self {
+            state: Mutex::new(ResizeThrottleState {
+                resize_should_wait: false,
+                resize_size: None,
+            }),
+        }
+    }
+
+    fn resize(
+        main_ctx: &mut MainContext,
+        root_scene: &EventRoot,
+        display_size: PhysicalSize<NonZeroU32>,
+        ui_size: UISize,
+        block: bool,
+    ) {
+        if block {
+            main_ctx.execute_draw_sync(move |context, _| {
+                context.resize(display_size, ui_size);
+                Ok(())
+            })
+        } else {
+            main_ctx
+                .channels
+                .draw
+                .execute_draw_event(move |context, _| {
+                    context.resize(display_size, ui_size);
+                    []
+                })
+        }
+        .context("unable to send resize execute request to draw server")
+        .log_error();
+        root_scene.handle_event(
+            main_ctx,
+            GameEvent::UserEvent(GameUserEvent::CheckedResize {
+                display_size,
+                ui_size,
+            }),
+        );
+    }
+
+    fn resize_timeout_func(
+        self: Arc<Self>,
+        main_ctx: &mut MainContext,
+        root_scene: &mut EventRoot,
+    ) -> anyhow::Result<()> {
+        let mut state = self.state.lock();
+        if let Some((size, ui_size)) = state.resize_size.take() {
+            Self::resize(main_ctx, root_scene, size, ui_size, false);
+            state.resize_size = None;
+            self.clone().set_timeout(main_ctx)?;
+        } else {
+            state.resize_should_wait = false;
+        }
+
+        Ok(())
+    }
+
+    fn set_timeout(self: Arc<Self>, main_ctx: &mut MainContext) -> anyhow::Result<()> {
+        main_ctx.set_timeout(Self::THROTTLE_DURATION, move |main_ctx, root_scene, _| {
+            self.resize_timeout_func(main_ctx, root_scene).log_error();
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+}
+
+impl Default for HandleResize {
+    fn default() -> Self {
+        Self::new()
     }
 }

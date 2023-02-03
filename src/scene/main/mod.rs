@@ -1,56 +1,59 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 
-use crate::{
-    events::GameEvent,
-    exec::main_ctx::MainContext,
-    ui::{self, scenes::UIEventScene},
-};
+use crate::{events::GameEvent, exec::main_ctx::MainContext, graphics::context::DrawContext};
 
-use self::{content::Content, core::Core, handle_resize::HandleResize, utility::Utility};
+use self::handle_resize::HandleResize;
+
+use super::{Scene, SceneContainer};
 
 pub mod content;
 pub mod core;
 pub mod handle_resize;
 pub mod utility;
 
+#[derive(Clone)]
 pub struct EventRoot {
-    handle_resize: Option<HandleResize>,
-    core: Core,
-    content: Content,
-    utility: Utility,
-    ui: ui::scenes::UIEventScene,
+    container: Arc<SceneContainer>,
 }
 
 impl EventRoot {
     pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
-        Ok(Self {
-            handle_resize: Some(
-                HandleResize::new(main_ctx).context("unable to initialize handle resize scene")?,
-            ),
-            core: Core::new(main_ctx).context("unable to initialize handle core scene")?,
-            content: Content::new(main_ctx).context("unable to initialize content scene")?,
-            utility: Utility::new(main_ctx).context("unable to initialize utility scene")?,
-            ui: UIEventScene::new(main_ctx),
-        })
+        let mut container = SceneContainer::new();
+        container.push(HandleResize::new());
+        container.push_all(core::new(main_ctx).context("unable to initialize handle core scene")?);
+        container.push_all(content::new(main_ctx).context("unable to initialize content scene")?);
+        container.push_all(utility::new(main_ctx).context("unable to initialize utility scene")?);
+        let slf = Self {
+            container: Arc::new(container),
+        };
+
+        let draw_self = slf.clone();
+        main_ctx
+            .channels
+            .draw
+            .execute_draw_event(move |_, root_scene_opt| {
+                *root_scene_opt = Some(draw_self);
+                []
+            })
+            .context("unable to share root scene with draw server")?;
+
+        Ok(slf)
     }
 
-    pub fn handle_event(
-        &mut self,
-        main_ctx: &mut MainContext,
-        event: GameEvent,
-    ) -> anyhow::Result<()> {
-        let _ = {
-            if let Some(mut handle_resize) = self.handle_resize.take() {
-                let result = handle_resize.handle_event(main_ctx, self, &event)?;
-                self.handle_resize = Some(handle_resize);
-                result
-            } else {
-                false
-            }
-        } || self.core.handle_event(main_ctx, &event)?
-            || self.content.handle_event(main_ctx, &event)
-            || self.utility.handle_event(main_ctx, &event)?
-            || self.ui.handle_event(main_ctx, &event)?;
-        Ok(())
+    pub fn handle_event(&self, ctx: &mut MainContext, event: GameEvent) {
+        self.container.clone().handle_event(ctx, self, event);
     }
+
+    pub fn draw(&self, draw_ctx: &mut DrawContext) {
+        self.container.clone().draw(draw_ctx);
+    }
+}
+
+#[test]
+fn test_sync() {
+    use crate::assert_sync;
+
+    assert_sync!(EventRoot);
 }

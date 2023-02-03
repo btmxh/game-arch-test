@@ -135,6 +135,7 @@ impl BlurRenderer {
 
         let slf = self.clone();
         draw.execute_draw_event(move |context, _| {
+            tracing::info!("redraw");
             let program = slf.program.get(context);
             let vertex_array = slf.vertex_array.get(context);
             let framebuffers = slf

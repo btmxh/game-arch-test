@@ -1,7 +1,7 @@
 use crate::{
     events::GameUserEvent,
     graphics::context::{DrawContext, SendDrawContext},
-    scene::draw::DrawRoot,
+    scene::main::EventRoot,
     utils::mpsc::{Receiver, Sender},
 };
 use std::any::Any;
@@ -22,7 +22,7 @@ pub enum SendMsg {
 
 type ExecuteSyncReturnType = Box<dyn Any + Send + 'static>;
 type ExecuteEventReturnType = Box<dyn Iterator<Item = GameUserEvent>>;
-type ExecuteCallback<R> = dyn FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send;
+type ExecuteCallback<R> = dyn FnOnce(&mut DrawContext, &mut Option<EventRoot>) -> R + Send;
 
 pub enum RecvMsg {
     SetFrequencyProfiling(bool),
@@ -31,12 +31,12 @@ pub enum RecvMsg {
 }
 pub struct Server {
     pub context: DrawContext,
-    pub root_scene: DrawRoot,
+    pub root_scene: Option<EventRoot>,
 }
 
 pub struct SendServer {
     pub context: SendDrawContext,
-    pub root_scene: DrawRoot,
+    pub root_scene: Option<EventRoot>,
 }
 
 impl GameServer for Server {
@@ -62,7 +62,7 @@ impl SendServer {
         Ok((
             Self {
                 context,
-                root_scene: DrawRoot::new()?,
+                root_scene: None,
             },
             channel,
         ))
@@ -100,7 +100,7 @@ fn execute_draw_event<F, R>(
 ) -> anyhow::Result<()>
 where
     R: IntoIterator<Item = GameUserEvent> + Send + 'static,
-    F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
+    F: FnOnce(&mut DrawContext, &mut Option<EventRoot>) -> R + Send + 'static,
 {
     channel.send(RecvMsg::ExecuteEvent(Box::new(
         move |context, root_scene| Box::new(callback(context, root_scene).into_iter()),
@@ -122,7 +122,7 @@ impl ServerChannel {
     pub fn execute_draw_event<F, R>(&self, callback: F) -> anyhow::Result<()>
     where
         R: IntoIterator<Item = GameUserEvent> + Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut Option<EventRoot>) -> R + Send + 'static,
     {
         self::execute_draw_event(self, callback)
     }
@@ -132,7 +132,7 @@ impl ServerSendChannel<RecvMsg> {
     pub fn execute_draw_event<F, R>(&self, callback: F) -> anyhow::Result<()>
     where
         R: IntoIterator<Item = GameUserEvent> + Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut DrawRoot) -> R + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut Option<EventRoot>) -> R + Send + 'static,
     {
         self::execute_draw_event(self, callback)
     }

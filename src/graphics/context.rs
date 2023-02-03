@@ -5,7 +5,7 @@ use crate::{
         BaseGameServer,
     },
     graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
-    scene::draw::DrawRoot,
+    scene::main::EventRoot,
     ui::utils::geom::UISize,
 };
 use std::{ffi::CString, num::NonZeroU32};
@@ -129,7 +129,7 @@ impl DrawContext {
         Ok(())
     }
 
-    fn process_messages(&mut self, root_scene: &mut DrawRoot) -> anyhow::Result<()> {
+    fn process_messages(&mut self, root_scene: &mut Option<EventRoot>) -> anyhow::Result<()> {
         let messages = self
             .base
             .receiver
@@ -147,7 +147,6 @@ impl DrawContext {
                 }
                 RecvMsg::ExecuteEvent(callback) => {
                     callback(self, root_scene)
-                        .into_iter()
                         .try_for_each(|evt| self.base.proxy.send_event(evt))
                         .map_err(|e| anyhow::format_err!("{}", e))
                         .context("unable to send event to event loop")?;
@@ -191,10 +190,16 @@ impl DrawContext {
         })
     }
 
-    pub fn draw(&mut self, root_scene: &mut DrawRoot, runner_frequency: f64) -> anyhow::Result<()> {
+    pub fn draw(
+        &mut self,
+        root_scene: &mut Option<EventRoot>,
+        runner_frequency: f64,
+    ) -> anyhow::Result<()> {
         self.base.run("Draw", runner_frequency);
         self.process_messages(root_scene)?;
-        root_scene.draw(self)?;
+        if let Some(root_scene) = root_scene {
+            root_scene.draw(self);
+        }
         self.gl_surface.swap_buffers(&self.gl_context)?;
         Ok(())
     }

@@ -1,15 +1,25 @@
 use std::ops::{Deref, DerefMut};
 
-pub struct Mutex<T>(std::sync::Mutex<T>);
-pub struct MutexGuard<'a, T>(std::sync::MutexGuard<'a, T>);
+pub struct Mutex<T>(parking_lot::Mutex<T>);
+pub struct MutexGuard<'a, T>(parking_lot::MutexGuard<'a, T>);
 
 impl<T> Mutex<T> {
     pub fn new(value: T) -> Self {
-        Self(std::sync::Mutex::new(value))
+        Self(parking_lot::Mutex::new(value))
     }
 
     pub fn lock(&self) -> MutexGuard<'_, T> {
-        MutexGuard(self.0.lock().expect("mutex poison error"))
+        MutexGuard(self.0.lock())
+    }
+
+    pub fn into_inner(self) -> parking_lot::Mutex<T> {
+        self.0
+    }
+}
+
+impl<'a, T> MutexGuard<'a, T> {
+    pub fn into_inner(self) -> parking_lot::MutexGuard<'a, T> {
+        self.0
     }
 }
 

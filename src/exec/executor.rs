@@ -7,7 +7,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::{events::GameUserEvent, scene::main::EventRoot, utils::error::ResultExt};
+use crate::{events::GameUserEvent, scene::main::RootScene, utils::error::ResultExt};
 
 use super::{
     main_ctx::MainContext,
@@ -111,7 +111,7 @@ impl GameServerExecutor {
     pub fn run(
         event_loop: EventLoop<GameUserEvent>,
         mut main_ctx: MainContext,
-        mut root_scene: EventRoot,
+        mut root_scene: RootScene,
         guard: Option<WorkerGuard>,
     ) -> ! {
         event_loop.run(move |event, _target, control_flow| {

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{events::GameEvent, exec::main_ctx::MainContext, graphics::context::DrawContext};
 
-use self::main::EventRoot;
+use self::main::RootScene;
 
 pub mod main;
 
@@ -33,7 +33,7 @@ pub trait Scene: Send + Sync {
     fn handle_event<'a>(
         self: Arc<Self>,
         _ctx: &mut MainContext,
-        _root_scene: &EventRoot,
+        _root_scene: &RootScene,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         Some(event)
@@ -46,7 +46,7 @@ impl Scene for SceneContainer {
     fn handle_event<'a>(
         self: Arc<Self>,
         ctx: &mut MainContext,
-        root_scene: &EventRoot,
+        root_scene: &RootScene,
         mut event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         for scene in self.scenes.iter().rev() {

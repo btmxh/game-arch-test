@@ -3,7 +3,7 @@ use winit::event::Event;
 use crate::{
     events::{GameEvent, GameUserEvent},
     exec::main_ctx::MainContext,
-    scene::{main::EventRoot, Scene},
+    scene::{main::RootScene, Scene},
 };
 
 pub struct Error;
@@ -12,7 +12,7 @@ impl Scene for Error {
     fn handle_event<'a>(
         self: std::sync::Arc<Self>,
         _: &mut MainContext,
-        _: &EventRoot,
+        _: &RootScene,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match event {

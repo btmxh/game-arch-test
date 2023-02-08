@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::scene::main::EventRoot;
+use crate::scene::main::RootScene;
 
 use super::{
     main_ctx::MainContext,
@@ -9,7 +9,7 @@ use super::{
 
 pub type DispatchId = u64;
 pub type DispatchFnType =
-    dyn FnOnce(&mut MainContext, &mut EventRoot, DispatchId) -> anyhow::Result<()>;
+    dyn FnOnce(&mut MainContext, &mut RootScene, DispatchId) -> anyhow::Result<()>;
 
 #[derive(Default)]
 pub struct DispatchList {
@@ -24,7 +24,7 @@ impl DispatchList {
 
     pub fn push<F>(&mut self, callback: F, cancel_token: CancellationToken) -> DispatchId
     where
-        F: FnOnce(&mut MainContext, &mut EventRoot, DispatchId) -> anyhow::Result<()> + 'static,
+        F: FnOnce(&mut MainContext, &mut RootScene, DispatchId) -> anyhow::Result<()> + 'static,
     {
         self.push_boxed(Box::new(callback), cancel_token)
     }

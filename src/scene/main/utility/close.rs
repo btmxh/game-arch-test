@@ -4,7 +4,7 @@ use winit::event::{Event, WindowEvent};
 use crate::{
     events::{GameEvent, GameUserEvent},
     exec::main_ctx::MainContext,
-    scene::{main::EventRoot, Scene},
+    scene::{main::RootScene, Scene},
     utils::error::ResultExt,
 };
 
@@ -14,7 +14,7 @@ impl Scene for Close {
     fn handle_event<'a>(
         self: std::sync::Arc<Self>,
         ctx: &mut MainContext,
-        _: &EventRoot,
+        _: &RootScene,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match &event {

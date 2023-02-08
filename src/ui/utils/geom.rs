@@ -14,6 +14,8 @@ pub struct UISize {
 }
 
 impl UIPos {
+    pub const ZERO: UIPos = UIPos::new(0.0, 0.0);
+
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
@@ -32,6 +34,8 @@ impl From<UIPos> for Vec2 {
 }
 
 impl UISize {
+    pub const ZERO: UISize = Self::new(0.0, 0.0);
+
     pub const fn new(width: f32, height: f32) -> Self {
         Self { width, height }
     }
@@ -91,7 +95,17 @@ fn equals_2d(lhs: (f32, f32), rhs: (f32, f32)) -> bool {
     dx * dx + dy * dy <= EPSILON
 }
 
+#[derive(Clone, Copy, Default)]
 pub struct UIRect {
     pub pos: UIPos,
     pub size: UISize,
+}
+
+impl UIRect {
+    pub fn contains(&self, pos: UIPos) -> bool {
+        self.pos.x <= pos.x
+            && pos.x <= self.pos.x + self.size.width
+            && self.pos.y <= pos.y
+            && pos.y <= self.pos.y + self.size.height
+    }
 }

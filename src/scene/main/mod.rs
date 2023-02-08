@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Context;
 
-use crate::{events::GameEvent, exec::main_ctx::MainContext, graphics::context::DrawContext};
+use crate::{
+    events::GameEvent, exec::main_ctx::MainContext, graphics::context::DrawContext,
+    utils::args::args,
+};
 
 use self::handle_resize::HandleResize;
 
@@ -11,19 +14,27 @@ use super::{Scene, SceneContainer};
 pub mod content;
 pub mod core;
 pub mod handle_resize;
+pub mod test;
 pub mod utility;
 
 #[derive(Clone)]
-pub struct EventRoot {
+pub struct RootScene {
     container: Arc<SceneContainer>,
 }
 
-impl EventRoot {
+impl RootScene {
     pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
         let mut container = SceneContainer::new();
         container.push(HandleResize::new());
         container.push_all(core::new(main_ctx).context("unable to initialize handle core scene")?);
-        container.push_all(content::new(main_ctx).context("unable to initialize content scene")?);
+        if args().test {
+            container.push_all(
+                test::new(main_ctx), // .context("unable to initialize test scene")?
+            );
+        } else {
+            container
+                .push_all(content::new(main_ctx).context("unable to initialize content scene")?);
+        }
         container.push_all(utility::new(main_ctx).context("unable to initialize utility scene")?);
         let slf = Self {
             container: Arc::new(container),
@@ -55,5 +66,5 @@ impl EventRoot {
 fn test_sync() {
     use crate::assert_sync;
 
-    assert_sync!(EventRoot);
+    assert_sync!(RootScene);
 }

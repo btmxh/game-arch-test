@@ -13,7 +13,7 @@ use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEve
 use crate::{
     events::GameEvent,
     exec::main_ctx::MainContext,
-    scene::{main::EventRoot, Scene},
+    scene::{main::RootScene, Scene},
     utils::error::ResultExt,
 };
 
@@ -25,7 +25,7 @@ impl Scene for VSync {
     fn handle_event<'a>(
         self: Arc<Self>,
         ctx: &mut MainContext,
-        _: &EventRoot,
+        _: &RootScene,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match &event {

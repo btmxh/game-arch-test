@@ -7,7 +7,7 @@ use exec::{
     runner::MAIN_RUNNER_ID,
     server::{audio, draw, update, ServerChannels, ServerKind},
 };
-use scene::main::EventRoot;
+use scene::main::RootScene;
 use utils::{args::parse_args, log::init_log};
 use winit::{dpi::PhysicalSize, event_loop::EventLoopBuilder};
 
@@ -43,6 +43,6 @@ fn main() -> anyhow::Result<()> {
     executor.move_server(MAIN_RUNNER_ID, 1, ServerKind::Draw)?;
     executor.set_frequency(0, 1000.0)?;
     let mut main_ctx = MainContext::new(executor, display, event_loop_proxy, channels)?;
-    let root_scene = EventRoot::new(&mut main_ctx)?;
+    let root_scene = RootScene::new(&mut main_ctx)?;
     main_ctx.run(event_loop, root_scene, guard);
 }

@@ -6,7 +6,7 @@ use winit::event::Event;
 use crate::{
     events::GameEvent,
     exec::main_ctx::MainContext,
-    scene::{main::EventRoot, Scene},
+    scene::{main::RootScene, Scene},
     utils::{args::args, error::ResultExt},
 };
 
@@ -16,7 +16,7 @@ impl Scene for Redraw {
     fn handle_event<'a>(
         self: Arc<Self>,
         ctx: &mut MainContext,
-        _: &EventRoot,
+        _: &RootScene,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match event {

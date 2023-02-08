@@ -11,7 +11,7 @@ use crate::{
     display::Display,
     events::{GameEvent, GameUserEvent},
     graphics::{context::DrawContext, wrappers::vertex_array::VertexArrayHandle},
-    scene::main::EventRoot,
+    scene::main::RootScene,
     utils::error::ResultExt,
 };
 
@@ -52,9 +52,8 @@ impl MainContext {
 
     pub fn handle_event(
         &mut self,
-
-        root_scene: &mut EventRoot,
-        event: GameEvent<'_>,
+        root_scene: &mut RootScene,
+        event: GameEvent,
     ) -> anyhow::Result<()> {
         match event {
             Event::UserEvent(GameUserEvent::Dispatch(msg)) => {
@@ -84,7 +83,7 @@ impl MainContext {
         callback: F,
     ) -> anyhow::Result<(DispatchId, CancellationToken)>
     where
-        F: FnOnce(&mut MainContext, &mut EventRoot, DispatchId) -> anyhow::Result<()> + 'static,
+        F: FnOnce(&mut MainContext, &mut RootScene, DispatchId) -> anyhow::Result<()> + 'static,
     {
         let cancel_token = CancellationToken::new();
         let id = self.dispatch_list.push(callback, cancel_token.clone());
@@ -103,7 +102,7 @@ impl MainContext {
     pub fn execute_draw_sync<F, R>(&mut self, callback: F) -> anyhow::Result<R>
     where
         R: Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut Option<EventRoot>) -> anyhow::Result<R> + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut Option<RootScene>) -> anyhow::Result<R> + Send + 'static,
     {
         if let Some(server) = self.executor.main_runner.base.container.draw.as_mut() {
             callback(&mut server.context, &mut server.root_scene)
@@ -129,7 +128,7 @@ impl MainContext {
     pub fn run(
         mut self,
         event_loop: EventLoop<GameUserEvent>,
-        mut root_scene: EventRoot,
+        mut root_scene: RootScene,
         guard: Option<WorkerGuard>,
     ) -> ! {
         use winit::event_loop::ControlFlow;

@@ -5,7 +5,7 @@ use crate::{
         BaseGameServer,
     },
     graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
-    scene::main::EventRoot,
+    scene::main::RootScene,
     ui::utils::geom::UISize,
 };
 use std::{ffi::CString, num::NonZeroU32};
@@ -129,7 +129,7 @@ impl DrawContext {
         Ok(())
     }
 
-    fn process_messages(&mut self, root_scene: &mut Option<EventRoot>) -> anyhow::Result<()> {
+    fn process_messages(&mut self, root_scene: &mut Option<RootScene>) -> anyhow::Result<()> {
         let messages = self
             .base
             .receiver
@@ -192,7 +192,7 @@ impl DrawContext {
 
     pub fn draw(
         &mut self,
-        root_scene: &mut Option<EventRoot>,
+        root_scene: &mut Option<RootScene>,
         runner_frequency: f64,
     ) -> anyhow::Result<()> {
         self.base.run("Draw", runner_frequency);

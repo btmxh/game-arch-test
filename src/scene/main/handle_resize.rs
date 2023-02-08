@@ -14,7 +14,7 @@ use crate::{
     utils::{args::args, error::ResultExt, mutex::Mutex},
 };
 
-use super::EventRoot;
+use super::RootScene;
 
 pub struct ResizeThrottleState {
     // for resize throttling
@@ -31,7 +31,7 @@ impl Scene for HandleResize {
     fn handle_event<'a>(
         self: Arc<Self>,
         main_ctx: &mut MainContext,
-        root_scene: &EventRoot,
+        root_scene: &RootScene,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match event {
@@ -90,7 +90,7 @@ impl HandleResize {
 
     fn resize(
         main_ctx: &mut MainContext,
-        root_scene: &EventRoot,
+        root_scene: &RootScene,
         display_size: PhysicalSize<NonZeroU32>,
         ui_size: UISize,
         block: bool,
@@ -123,7 +123,7 @@ impl HandleResize {
     fn resize_timeout_func(
         self: Arc<Self>,
         main_ctx: &mut MainContext,
-        root_scene: &mut EventRoot,
+        root_scene: &mut RootScene,
     ) -> anyhow::Result<()> {
         let mut state = self.state.lock();
         if let Some((size, ui_size)) = state.resize_size.take() {

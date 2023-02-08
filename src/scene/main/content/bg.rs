@@ -25,7 +25,7 @@ use crate::{
             texture::{TextureHandle, TextureType},
         },
     },
-    scene::{main::EventRoot, Scene},
+    scene::{main::RootScene, Scene},
     utils::{
         clock::{Clock, SteadyClock},
         error::ResultExt,
@@ -54,7 +54,7 @@ impl Scene for Background {
     fn handle_event<'a>(
         self: Arc<Self>,
         ctx: &mut MainContext,
-        _: &EventRoot,
+        _: &RootScene,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match &event {

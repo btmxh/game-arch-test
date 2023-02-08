@@ -9,13 +9,13 @@ use crate::{
         dispatch::{DispatchId, DispatchMsg},
         main_ctx::MainContext,
     },
-    scene::main::EventRoot,
+    scene::main::RootScene,
     ui::utils::geom::UISize,
 };
 
 pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
 pub type ExecuteCallback =
-    Box<dyn FnOnce(&mut MainContext, &mut EventRoot) -> anyhow::Result<()> + Send>;
+    Box<dyn FnOnce(&mut MainContext, &mut RootScene) -> anyhow::Result<()> + Send>;
 
 #[derive(Derivative)]
 #[derivative(Debug)]

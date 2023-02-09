@@ -1,6 +1,9 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use tracing_appender::non_blocking::WorkerGuard;
 use winit::{
     event::Event,
@@ -12,7 +15,8 @@ use crate::{
     events::{GameEvent, GameUserEvent},
     graphics::{context::DrawContext, wrappers::vertex_array::VertexArrayHandle},
     scene::main::RootScene,
-    utils::error::ResultExt,
+    test::TestManager,
+    utils::{args::args, error::ResultExt},
 };
 
 use super::{
@@ -23,6 +27,7 @@ use super::{
 };
 
 pub struct MainContext {
+    pub test_manager: Option<Arc<TestManager>>,
     pub executor: GameServerExecutor,
     pub dummy_vao: VertexArrayHandle,
     pub task_executor: TaskExecutor,
@@ -39,15 +44,29 @@ impl MainContext {
         event_loop_proxy: EventLoopProxy<GameUserEvent>,
         mut channels: ServerChannels,
     ) -> anyhow::Result<Self> {
-        Ok(Self {
+        let mut slf = Self {
             executor,
+            test_manager: args()
+                .test
+                .then(|| TestManager::new(event_loop_proxy.clone())),
             dummy_vao: VertexArrayHandle::new(&mut channels.draw, "dummy vertex array")?,
             task_executor: TaskExecutor::new(),
             display,
             event_loop_proxy,
             dispatch_list: DispatchList::new(),
             channels,
-        })
+        };
+
+        if let Some(test_manager) = slf.test_manager.as_ref() {
+            let test_manager = test_manager.clone();
+            slf.set_timeout(Duration::from_secs(10), move |_, _, _| {
+                test_manager.set_timeout_func();
+                Ok(())
+            })
+            .context("unable to set test timeout")?;
+        }
+
+        Ok(slf)
     }
 
     pub fn handle_event(
@@ -147,7 +166,9 @@ impl MainContext {
                         .expect("error running main runner");
                 }
 
-                Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
+                Event::UserEvent(GameUserEvent::Exit(code)) => {
+                    control_flow.set_exit_with_code(code)
+                }
 
                 event => self
                     .handle_event(&mut root_scene, event)

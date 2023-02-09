@@ -20,7 +20,7 @@ pub type ExecuteCallback =
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub enum GameUserEvent {
-    Exit,
+    Exit(i32),
     Dispatch(DispatchMsg),
     Execute(#[derivative(Debug = "ignore")] ExecuteCallback),
     VSyncSet(Option<SwapInterval>, Option<DispatchId>),

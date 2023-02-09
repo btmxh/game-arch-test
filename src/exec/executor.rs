@@ -1,16 +1,8 @@
-use std::time::{Duration, Instant};
-
 use anyhow::Context;
-use tracing_appender::non_blocking::WorkerGuard;
-use winit::{
-    event::Event,
-    event_loop::{ControlFlow, EventLoop},
-};
 
-use crate::{events::GameUserEvent, scene::main::RootScene, utils::error::ResultExt};
+use crate::utils::error::ResultExt;
 
 use super::{
-    main_ctx::MainContext,
     runner::{
         container::ServerContainer, MainRunner, Runner, RunnerId, ServerMover, ThreadRunnerHandle,
         MAIN_RUNNER_ID,
@@ -106,50 +98,5 @@ impl GameServerExecutor {
                 }
             }
         }
-    }
-
-    pub fn run(
-        event_loop: EventLoop<GameUserEvent>,
-        mut main_ctx: MainContext,
-        mut root_scene: RootScene,
-        guard: Option<WorkerGuard>,
-    ) -> ! {
-        event_loop.run(move |event, _target, control_flow| {
-            // guarantee drop order
-            fn unused<T>(_: &T) {}
-            unused(&root_scene);
-            unused(&main_ctx);
-            unused(&guard);
-            match event {
-                Event::MainEventsCleared => {
-                    main_ctx
-                        .executor
-                        .main_runner
-                        .base
-                        .run_single()
-                        .expect("error running main runner");
-                }
-
-                Event::UserEvent(GameUserEvent::Exit) => control_flow.set_exit(),
-
-                event => main_ctx
-                    .handle_event(&mut root_scene, event)
-                    .expect("error handling events"),
-            }
-
-            match *control_flow {
-                ControlFlow::ExitWithCode(_) => {
-                    main_ctx.executor.stop();
-                }
-
-                _ => {
-                    *control_flow = if main_ctx.executor.main_runner.base.container.is_empty() {
-                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
-                    } else {
-                        ControlFlow::Poll
-                    }
-                }
-            };
-        })
     }
 }

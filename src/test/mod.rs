@@ -36,7 +36,7 @@ impl TestManager {
                 proxy: Mutex::new(proxy),
                 root: ParentTestNode::new_root("root", move |_, result| {
                     if let Some(slf) = weak.upgrade() {
-                        if slf.done_init.load(Ordering::Relaxed) {
+                        if !slf.done_init.load(Ordering::Relaxed) {
                             return;
                         }
 

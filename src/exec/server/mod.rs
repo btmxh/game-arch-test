@@ -86,6 +86,9 @@ pub enum ServerKind {
 pub trait GameServer {
     fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()>;
     fn to_send(self) -> anyhow::Result<SendGameServer>;
+    fn does_run(&self) -> bool {
+        true
+    }
 }
 
 pub enum SendGameServer {

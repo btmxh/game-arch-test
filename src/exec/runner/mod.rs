@@ -68,12 +68,7 @@ impl ThreadRunner {
         loop {
             let pending_msgs = self
                 .receiver
-                .try_iter(
-                    self.base
-                        .container
-                        .is_empty()
-                        .then_some(DEFAULT_RECV_TIMEOUT),
-                )
+                .try_iter((!self.base.container.does_run()).then_some(DEFAULT_RECV_TIMEOUT))
                 .expect("thread runner channel was unexpectedly closed");
             for msg in pending_msgs {
                 match msg {

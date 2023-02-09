@@ -109,3 +109,31 @@ pub fn assert_greater_equals<T: PartialOrd + Debug>(
         })
     }
 }
+
+pub fn assert_true(value: bool, msg: impl Into<Cow<'static, str>>) -> TestResult {
+    if value {
+        Ok(())
+    } else {
+        Err(TestError::AssertError {
+            result: value,
+            custom_msg: msg.into(),
+        })
+    }
+}
+
+pub fn assert_false(value: bool, msg: impl Into<Cow<'static, str>>) -> TestResult {
+    if !value {
+        Ok(())
+    } else {
+        Err(TestError::AssertError {
+            result: value,
+            custom_msg: msg.into(),
+        })
+    }
+}
+
+pub fn assert_unreachable(msg: impl Into<Cow<'static, str>>) -> TestResult {
+    Err(TestError::AssertUnreachable {
+        custom_msg: msg.into(),
+    })
+}

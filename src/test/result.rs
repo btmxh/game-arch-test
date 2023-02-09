@@ -24,7 +24,10 @@ pub enum TestError {
     },
     AssertError {
         result: bool,
-        custom_msg: Option<Cow<'static, str>>,
+        custom_msg: Cow<'static, str>,
+    },
+    AssertUnreachable {
+        custom_msg: Cow<'static, str>,
     },
     GenericError(anyhow::Error),
 }

@@ -181,10 +181,10 @@ impl MainContext {
                 }
 
                 _ => {
-                    *control_flow = if self.executor.main_runner.base.container.is_empty() {
-                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
-                    } else {
+                    *control_flow = if self.executor.main_runner.base.container.does_run() {
                         ControlFlow::Poll
+                    } else {
+                        ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(100))
                     }
                 }
             };

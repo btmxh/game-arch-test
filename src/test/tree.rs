@@ -119,13 +119,13 @@ impl ParentTestNode {
         let mut failed_tests = Vec::new();
         let mut pending_tests = Vec::new();
         for (name, node) in lock.children.iter() {
-            let guard = match node {
-                TestNode::Parent(par) => par.result.lock(),
-                TestNode::Leaf(leaf) => leaf.result.lock(),
+            let (guard, full_name) = match node {
+                TestNode::Parent(par) => (par.result.lock(), par.full_name.clone()),
+                TestNode::Leaf(leaf) => (leaf.result.lock(), leaf.full_name.clone()),
             };
 
             match *guard {
-                Some(TestResult::Err(_)) => failed_tests.push(name.clone()),
+                Some(TestResult::Err(_)) => failed_tests.push(full_name.into()),
                 None => pending_tests.push(name.clone()),
                 _ => {}
             }
@@ -166,5 +166,9 @@ impl<C> GenericTestNode<C> {
                 parent.update_child(&self.name, result);
             }
         }
+    }
+
+    pub fn finished(&self) -> bool {
+        self.result.lock().is_some()
     }
 }

@@ -117,7 +117,10 @@ impl Display {
     ) -> anyhow::Result<(Display, Config)> {
         let span = tracing::trace_span!("Creating display window");
         let _enter = span.enter();
-        let window_builder = WindowBuilder::new().with_inner_size(size).with_title(title);
+        let window_builder = WindowBuilder::new()
+            .with_inner_size(size)
+            .with_title(title)
+            .with_visible(!args().headless);
         tracing::trace!("WindowBuilder structure: {:?}", window_builder);
         let (window, gl_config) = DisplayBuilder::new()
             .with_window_builder(Some(window_builder))
@@ -155,5 +158,9 @@ impl Display {
 
     pub fn get_scale_factor(&self) -> f64 {
         self.window.scale_factor()
+    }
+
+    pub fn get_winit_window(&self) -> &Window {
+        &self.window
     }
 }

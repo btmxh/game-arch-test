@@ -30,8 +30,8 @@ impl<C: Clock> FrequencyProfiler<C> {
     }
 }
 
-impl FrequencyProfiler<SteadyClock> {
-    pub fn default() -> Self {
+impl Default for FrequencyProfiler<SteadyClock> {
+    fn default() -> Self {
         Self::new(SteadyClock::default(), NonZeroUsize::new(16).unwrap())
     }
 }

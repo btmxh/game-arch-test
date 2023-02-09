@@ -77,6 +77,7 @@ pub struct QuadRenderer {
 
 impl QuadRenderer {
     pub const FULL_WINDOW_POS_BOUNDS: [Vec2; 2] = [Vec2::new(-1.0, -1.0), Vec2::new(1.0, 1.0)];
+    pub const FULL_TEXTURE_TEX_BOUNDS: [Vec2; 2] = [Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0)];
 
     pub fn new(
         dummy_vao: VertexArrayHandle,

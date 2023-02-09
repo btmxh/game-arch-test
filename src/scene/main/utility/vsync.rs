@@ -1,4 +1,10 @@
-use std::num::NonZeroU32;
+use std::{
+    num::NonZeroU32,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use anyhow::Context;
 use glutin::surface::SwapInterval;
@@ -6,59 +12,23 @@ use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEve
 
 use crate::{
     events::GameEvent,
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    exec::main_ctx::MainContext,
+    scene::{main::RootScene, Scene},
     utils::error::ResultExt,
 };
 
 pub struct VSync {
-    current_vsync: bool,
+    current_vsync: AtomicBool,
 }
 
-impl VSync {
-    pub fn new(
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-    ) -> anyhow::Result<Self> {
-        let mut slf = Self {
-            current_vsync: false,
-        };
-        slf.toggle(executor, main_ctx)?; // current_mode is now true
-        Ok(slf)
-    }
-
-    pub fn toggle(
-        &mut self,
-        _executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-    ) -> anyhow::Result<()> {
-        self.current_vsync = !self.current_vsync;
-        let interval = if self.current_vsync {
-            SwapInterval::Wait(NonZeroU32::new(1).unwrap())
-        } else {
-            SwapInterval::DontWait
-        };
-        GameServerExecutor::execute_draw_event(&main_ctx.channels.draw, move |s, _| {
-            s.set_swap_interval(interval)
-                .with_context(|| format!("unable to set vsync swap interval to {:?}", interval))
-                .log_error();
-            tracing::info!(
-                "VSync swap interval set to {} ({:?})",
-                interval != SwapInterval::DontWait,
-                interval
-            );
-            []
-        })?;
-
-        Ok(())
-    }
-
-    pub fn handle_event(
-        &mut self,
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-        event: &GameEvent,
-    ) -> anyhow::Result<bool> {
-        match event {
+impl Scene for VSync {
+    fn handle_event<'a>(
+        self: Arc<Self>,
+        ctx: &mut MainContext,
+        _: &RootScene,
+        event: GameEvent<'a>,
+    ) -> Option<GameEvent<'a>> {
+        match &event {
             Event::WindowEvent {
                 window_id,
                 event:
@@ -71,13 +41,49 @@ impl VSync {
                             },
                         ..
                     },
-            } if main_ctx.display.get_window_id() == *window_id => {
-                self.toggle(executor, main_ctx)?;
+            } if ctx.display.get_window_id() == *window_id => {
+                self.toggle(ctx)
+                    .context("unable to toggle VSync mode")
+                    .log_warn();
             }
 
             _ => {}
-        }
+        };
 
-        Ok(false)
+        Some(event)
+    }
+}
+
+impl VSync {
+    pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
+        let slf = Self {
+            current_vsync: AtomicBool::new(false),
+        };
+        slf.toggle(main_ctx)
+            .context("unable to reset vsync to default state")?; // current_mode is now true
+        Ok(slf)
+    }
+
+    pub fn toggle(&self, main_ctx: &mut MainContext) -> anyhow::Result<()> {
+        let current_vsync = !self.current_vsync.load(Ordering::Relaxed);
+        self.current_vsync.store(current_vsync, Ordering::Relaxed);
+        let interval = if current_vsync {
+            SwapInterval::Wait(NonZeroU32::new(1).unwrap())
+        } else {
+            SwapInterval::DontWait
+        };
+        main_ctx.channels.draw.execute_draw_event(move |s, _| {
+            s.set_swap_interval(interval)
+                .with_context(|| format!("unable to set vsync swap interval to {interval:?}"))
+                .log_error();
+            tracing::info!(
+                "VSync swap interval set to {} ({:?})",
+                interval != SwapInterval::DontWait,
+                interval
+            );
+            []
+        })?;
+
+        Ok(())
     }
 }

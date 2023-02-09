@@ -30,19 +30,31 @@ impl ServerMover for ServerContainer {
 
 impl ServerContainer {
     pub fn run_single(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
-        if let Some(server) = self.audio.as_mut() {
-            server.run(runner_frequency)?;
+        fn run<S: GameServer>(server: &mut Option<S>, runner_frequency: f64) -> anyhow::Result<()> {
+            if let Some(server) = server {
+                if server.does_run() {
+                    server.run(runner_frequency)?;
+                }
+            }
+            Ok(())
         }
-        if let Some(server) = self.draw.as_mut() {
-            server.run(runner_frequency)?;
-        }
-        if let Some(server) = self.update.as_mut() {
-            server.run(runner_frequency)?;
-        }
+
+        run(&mut self.audio, runner_frequency)?;
+        run(&mut self.draw, runner_frequency)?;
+        run(&mut self.update, runner_frequency)?;
         Ok(())
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.audio.is_none() && self.draw.is_none() && self.update.is_none()
+    pub fn does_run(&self) -> bool {
+        self.audio
+            .as_ref()
+            .map(|s| s.does_run())
+            .unwrap_or_default()
+            || self.draw.as_ref().map(|s| s.does_run()).unwrap_or_default()
+            || self
+                .update
+                .as_ref()
+                .map(|s| s.does_run())
+                .unwrap_or_default()
     }
 }

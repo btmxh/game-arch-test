@@ -4,11 +4,7 @@ use gl::types::{GLenum, GLuint};
 use glutin::prelude::GlConfig;
 use winit::dpi::PhysicalSize;
 
-use crate::{
-    events::GameUserEvent,
-    exec::{executor::GameServerExecutor, server::draw},
-    graphics::context::DrawContext,
-};
+use crate::{events::GameUserEvent, exec::server::draw, graphics::context::DrawContext};
 
 use super::{
     texture::{Texture, TextureHandle, TextureType},
@@ -159,7 +155,7 @@ impl DefaultTextureFramebuffer {
 
         let slf = self.clone();
         self.size = Some(new_size);
-        GameServerExecutor::execute_draw_event(draw, move |context, _| {
+        draw.execute_draw_event(move |context, _| {
             slf.resize_in_server(context, new_size)
                 .err()
                 .map(GameUserEvent::Error)

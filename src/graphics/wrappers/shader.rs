@@ -10,7 +10,7 @@ use gl::types::{GLchar, GLenum, GLuint};
 use crate::{
     enclose,
     events::GameUserEvent,
-    exec::{executor::GameServerExecutor, server::draw},
+    exec::server::draw,
     graphics::{context::DrawContext, GfxHandle},
 };
 
@@ -159,14 +159,11 @@ impl ProgramHandle {
         fragment: &'static str,
     ) -> anyhow::Result<Self> {
         let handle = unsafe { Self::new_uninit(draw) };
-        GameServerExecutor::execute_draw_event(
-            draw,
-            enclose!((handle) move |context, _| {
-                context.handles.create_vf_program(name, &handle, vertex, fragment)
-                    .err()
-                    .map(GameUserEvent::Error)
-            }),
-        )?;
+        draw.execute_draw_event(enclose!((handle) move |context, _| {
+            context.handles.create_vf_program(name, &handle, vertex, fragment)
+                .err()
+                .map(GameUserEvent::Error)
+        }))?;
         Ok(handle)
     }
 }

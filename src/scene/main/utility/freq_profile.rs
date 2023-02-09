@@ -1,50 +1,27 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use anyhow::Context;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 use crate::{
     events::GameEvent,
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
+    exec::main_ctx::MainContext,
+    scene::{main::RootScene, Scene},
+    utils::error::ResultExt,
 };
 
 pub struct FreqProfile {
-    current_freq_profile: bool,
+    current_freq_profile: AtomicBool,
 }
 
-impl FreqProfile {
-    pub fn new(_: &mut GameServerExecutor, _: &mut MainContext) -> anyhow::Result<Self> {
-        Ok(Self {
-            current_freq_profile: false,
-        })
-    }
-
-    pub fn toggle(
-        &mut self,
-        _executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-    ) -> anyhow::Result<()> {
-        self.current_freq_profile = !self.current_freq_profile;
-        main_ctx
-            .channels
-            .update
-            .set_frequency_profiling(self.current_freq_profile)?;
-        main_ctx
-            .channels
-            .draw
-            .set_frequency_profiling(self.current_freq_profile)?;
-        main_ctx
-            .channels
-            .audio
-            .set_frequency_profiling(self.current_freq_profile)?;
-
-        Ok(())
-    }
-
-    pub fn handle_event(
-        &mut self,
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-        event: &GameEvent,
-    ) -> anyhow::Result<bool> {
-        match event {
+impl Scene for FreqProfile {
+    fn handle_event<'a>(
+        self: std::sync::Arc<Self>,
+        ctx: &mut MainContext,
+        _: &RootScene,
+        event: GameEvent<'a>,
+    ) -> Option<GameEvent<'a>> {
+        match &event {
             Event::WindowEvent {
                 window_id,
                 event:
@@ -57,13 +34,49 @@ impl FreqProfile {
                             },
                         ..
                     },
-            } if main_ctx.display.get_window_id() == *window_id => {
-                self.toggle(executor, main_ctx)?;
+            } if ctx.display.get_window_id() == *window_id => {
+                self.toggle(ctx)
+                    .context("unable to toggle frequency profile mode")
+                    .log_error();
             }
 
             _ => {}
         }
 
-        Ok(false)
+        Some(event)
+    }
+}
+
+impl FreqProfile {
+    pub fn new() -> Self {
+        Self {
+            current_freq_profile: AtomicBool::new(false),
+        }
+    }
+
+    pub fn toggle(&self, main_ctx: &mut MainContext) -> anyhow::Result<()> {
+        let current_freq_profile = !self.current_freq_profile.load(Ordering::Relaxed);
+        self.current_freq_profile
+            .store(current_freq_profile, Ordering::Relaxed);
+        main_ctx
+            .channels
+            .update
+            .set_frequency_profiling(current_freq_profile)?;
+        main_ctx
+            .channels
+            .draw
+            .set_frequency_profiling(current_freq_profile)?;
+        main_ctx
+            .channels
+            .audio
+            .set_frequency_profiling(current_freq_profile)?;
+
+        Ok(())
+    }
+}
+
+impl Default for FreqProfile {
+    fn default() -> Self {
+        Self::new()
     }
 }

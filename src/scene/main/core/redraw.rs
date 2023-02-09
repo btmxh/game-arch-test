@@ -1,50 +1,54 @@
+use std::sync::Arc;
+
+use anyhow::Context;
 use winit::event::Event;
 
 use crate::{
     events::GameEvent,
-    exec::{executor::GameServerExecutor, main_ctx::MainContext},
-    utils::args::args,
+    exec::main_ctx::MainContext,
+    scene::{main::RootScene, Scene},
+    utils::{args::args, error::ResultExt},
 };
 
 pub struct Redraw;
 
-impl Redraw {
-    pub fn new(_: &mut GameServerExecutor, _: &mut MainContext) -> anyhow::Result<Self> {
-        Ok(Self)
-    }
+impl Scene for Redraw {
+    fn handle_event<'a>(
+        self: Arc<Self>,
+        ctx: &mut MainContext,
+        _: &RootScene,
+        event: GameEvent<'a>,
+    ) -> Option<GameEvent<'a>> {
+        match event {
+            Event::RedrawRequested(window_id) if ctx.display.get_window_id() == window_id => {
+                Self::redraw(ctx)
+                    .context("unable to send redraw request")
+                    .log_warn();
+                None
+            }
 
-    fn redraw(executor: &mut GameServerExecutor, main_ctx: &mut MainContext) -> anyhow::Result<()> {
+            event => Some(event),
+        }
+    }
+}
+
+impl Redraw {
+    fn redraw(main_ctx: &mut MainContext) -> anyhow::Result<()> {
         if args().block_event_loop {
             // somewhat hacky way of waiting a buffer swap
-            if executor.main_runner.base.container.draw.is_some() {
-                executor
+            if main_ctx.executor.main_runner.base.container.draw.is_some() {
+                main_ctx
+                    .executor
                     .main_runner
                     .base
                     .run_single()
                     .expect("error running main runner");
             } else {
-                executor.execute_draw_sync(&mut main_ctx.channels.draw, |_, _| Ok(()))?;
-                executor.execute_draw_sync(&mut main_ctx.channels.draw, |_, _| Ok(()))?;
+                main_ctx.execute_draw_sync(|_, _| Ok(()))?;
+                main_ctx.execute_draw_sync(|_, _| Ok(()))?;
             }
         }
 
         Ok(())
-    }
-
-    pub fn handle_event(
-        &mut self,
-        executor: &mut GameServerExecutor,
-        main_ctx: &mut MainContext,
-        event: &GameEvent,
-    ) -> anyhow::Result<bool> {
-        match event {
-            Event::RedrawRequested(window_id) if main_ctx.display.get_window_id() == *window_id => {
-                Self::redraw(executor, main_ctx)?;
-            }
-
-            _ => {}
-        }
-
-        Ok(false)
     }
 }

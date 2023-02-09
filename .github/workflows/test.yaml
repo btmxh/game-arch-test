@@ -35,10 +35,10 @@ jobs:
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('Cargo.lock') }}
       - name: Generate test result and coverage report
         run: cargo test
-      - name: Test glxinfo
+      - name: Setup OpenGL, Xvfb and test glxinfo
         run: |
           sudo apt-get update
           sudo apt-get install -y mesa-utils xvfb
           xvfb-run glxinfo
       - name: Run the program in test mode
-        run: xvfb-run -e cargo run -- --test --headless --auto-run-tests
+        run: xvfb-run cargo run -- --test --headless --auto-run-tests

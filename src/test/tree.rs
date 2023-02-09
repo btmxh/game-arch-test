@@ -73,7 +73,7 @@ impl ParentTestNode {
         let name = name.into();
         self.new_child(Self {
             parent: Some(Arc::downgrade(self)),
-            full_name: format!("{}.{}", self.name, name),
+            full_name: format!("{}.{}", self.full_name, name),
             name,
             result: Mutex::new(None),
             content: Mutex::new(ParentNodeContent::default()),
@@ -88,7 +88,7 @@ impl ParentTestNode {
         let name = name.into();
         self.new_child(GenericTestNode {
             parent: Some(Arc::downgrade(self)),
-            full_name: format!("{}.{}", self.name, name),
+            full_name: format!("{}.{}", self.full_name, name),
             name,
             result: Mutex::new(None),
             content: (),

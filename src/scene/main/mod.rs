@@ -28,9 +28,7 @@ impl RootScene {
         container.push(HandleResize::new());
         container.push_all(core::new(main_ctx).context("unable to initialize handle core scene")?);
         if args().test {
-            container.push_all(
-                test::new(main_ctx), // .context("unable to initialize test scene")?
-            );
+            container.push_all(test::new(main_ctx).context("unable to initialize test scene")?);
         } else {
             container
                 .push_all(content::new(main_ctx).context("unable to initialize content scene")?);

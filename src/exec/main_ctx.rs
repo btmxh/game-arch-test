@@ -59,7 +59,7 @@ impl MainContext {
 
         if let Some(test_manager) = slf.test_manager.as_ref() {
             let test_manager = test_manager.clone();
-            slf.set_timeout(Duration::from_secs(10), move |_, _, _| {
+            slf.set_timeout(Duration::from_secs(30), move |_, _, _| {
                 test_manager.set_timeout_func();
                 Ok(())
             })

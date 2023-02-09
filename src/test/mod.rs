@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use winit::event_loop::EventLoopProxy;
 
@@ -16,6 +19,7 @@ pub mod tree;
 pub struct TestManager {
     pub root: Arc<ParentTestNode>,
     proxy: Mutex<EventLoopProxy<GameUserEvent>>,
+    done_init: AtomicBool,
 }
 
 enum TestExitCode {
@@ -31,27 +35,52 @@ impl TestManager {
             Self {
                 proxy: Mutex::new(proxy),
                 root: ParentTestNode::new_root("root", move |_, result| {
-                    let exit_code = if result.is_ok() {
-                        TestExitCode::Complete
-                    } else {
-                        TestExitCode::Failed
-                    };
-                    tracing::info!("all test finished, result of root test is {:?}", result);
                     if let Some(slf) = weak.upgrade() {
+                        if slf.done_init.load(Ordering::Relaxed) {
+                            return;
+                        }
+
+                        let exit_code = if result.is_ok() {
+                            TestExitCode::Complete
+                        } else {
+                            TestExitCode::Failed
+                        };
+                        tracing::info!("all test finished, result of root test is {:?}", result);
                         slf.proxy
                             .lock()
                             .send_event(GameUserEvent::Exit(exit_code as _))
                             .log_warn();
                     }
                 }),
+                done_init: AtomicBool::new(false),
             }
         })
     }
 
-    pub fn set_timeout_func(self: Arc<Self>) {
+    pub fn set_timeout_func(&self) {
+        let result = self.root.result.lock();
+        let exit_code = match *result {
+            Some(Ok(_)) => TestExitCode::Complete,
+            Some(Err(_)) => TestExitCode::Failed,
+            None => TestExitCode::Timeout,
+        };
         self.proxy
             .lock()
-            .send_event(GameUserEvent::Exit(TestExitCode::Timeout as _))
+            .send_event(GameUserEvent::Exit(exit_code as _))
+            .log_warn();
+    }
+
+    pub fn finish_init(&self) {
+        self.done_init.store(true, Ordering::Relaxed);
+        let result = self.root.result.lock();
+        let exit_code = match *result {
+            Some(Ok(_)) => TestExitCode::Complete,
+            Some(Err(_)) => TestExitCode::Failed,
+            None => return,
+        };
+        self.proxy
+            .lock()
+            .send_event(GameUserEvent::Exit(exit_code as _))
             .log_warn();
     }
 }

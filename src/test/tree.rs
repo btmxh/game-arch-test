@@ -7,7 +7,7 @@ use std::{
 use anyhow::Context;
 use derive_more::From;
 
-use crate::utils::{error::ResultExt, mutex::Mutex};
+use crate::utils::mutex::Mutex;
 
 use super::result::{TestError, TestResult};
 
@@ -17,8 +17,8 @@ pub struct GenericTestNode<C> {
     name: Cow<'static, str>,
     full_name: String,
     content: C,
-    result: Mutex<Option<TestResult>>,
-    pub on_complete: Option<Box<dyn Fn(&GenericTestNode<C>, &TestResult) + Send + Sync>>,
+    pub result: Mutex<Option<TestResult>>,
+    on_complete: Option<Box<dyn Fn(&GenericTestNode<C>, &TestResult) + Send + Sync>>,
 }
 
 pub type ParentTestNode = GenericTestNode<Mutex<ParentNodeContent>>;
@@ -62,6 +62,7 @@ impl ParentTestNode {
             .children
             .insert(child.name.clone(), TestNode::from(child));
         debug_assert!(old_value.is_none());
+        *self.result.lock() = None;
         ret_child
     }
 
@@ -109,13 +110,7 @@ impl ParentTestNode {
         }
 
         if let Some(result) = self.get_result() {
-            if let Some(parent) = self
-                .parent
-                .as_ref()
-                .and_then(|par| par.upgrade().context("parent node was dropped").log_warn())
-            {
-                parent.update_child(&self.name, result);
-            }
+            self.update_result(result);
         }
     }
 
@@ -155,14 +150,21 @@ impl LeafTestNode {
             self.full_name,
             result
         );
-        if let Ok(parent) = self
-            .parent
-            .as_ref()
-            .expect("leaf node without parent")
-            .upgrade()
-            .context("parent node was dropped")
-        {
-            parent.update_child(&self.name, result);
+        debug_assert!(self.parent.is_some());
+        self.update_result(result);
+    }
+}
+
+impl<C> GenericTestNode<C> {
+    fn update_result(&self, result: TestResult) {
+        if let Some(on_complete) = self.on_complete.as_ref() {
+            (on_complete)(self, &result);
+        }
+
+        if let Some(parent) = self.parent.as_ref() {
+            if let Ok(parent) = parent.upgrade().context("parent node was dropped") {
+                parent.update_child(&self.name, result);
+            }
         }
     }
 }

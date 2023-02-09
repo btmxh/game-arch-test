@@ -37,4 +37,4 @@ jobs:
         run: cargo test
       - uses: openrndr/setup-opengl@v1.1
       - name: Run the program in test mode
-        run: xvfb-run cargo run -- --test --headless --auto-run-tests
+        run: xvfb-run -e cargo run -- --test --headless --auto-run-tests

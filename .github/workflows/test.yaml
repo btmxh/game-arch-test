@@ -30,3 +30,5 @@ jobs:
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('Cargo.lock') }}
       - name: Generate test result and coverage report
         run: cargo test
+      - name: Run the program in test mode
+        run: cargo run -- --test --headless --auto-run-tests

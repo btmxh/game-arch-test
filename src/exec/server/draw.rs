@@ -40,8 +40,9 @@ pub struct SendServer {
 }
 
 impl GameServer for Server {
-    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
-        self.context.draw(&mut self.root_scene, runner_frequency)
+    fn run(&mut self, can_block: bool, runner_frequency: f64) -> anyhow::Result<()> {
+        self.context
+            .draw(&mut self.root_scene, can_block, runner_frequency)
     }
 
     fn to_send(self) -> anyhow::Result<SendGameServer> {
@@ -49,10 +50,6 @@ impl GameServer for Server {
             context: self.context.to_send()?,
             root_scene: self.root_scene,
         })))
-    }
-
-    fn does_run(&self) -> bool {
-        true
     }
 }
 

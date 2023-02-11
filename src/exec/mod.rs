@@ -10,7 +10,7 @@ pub mod task;
 const NUM_GAME_LOOPS: usize = 3;
 
 #[cfg(debug_assertions)]
-const DEFAULT_RECV_TIMEOUT: Duration = crate::utils::ONE_YEAR;
+pub const DEFAULT_RECV_TIMEOUT: Duration = crate::utils::ONE_YEAR;
 
 #[cfg(not(debug_assertions))]
-const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_millis(300);
+pub const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_millis(300);

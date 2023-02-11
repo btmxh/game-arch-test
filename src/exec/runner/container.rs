@@ -30,31 +30,33 @@ impl ServerMover for ServerContainer {
 
 impl ServerContainer {
     pub fn run_single(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
-        fn run<S: GameServer>(server: &mut Option<S>, runner_frequency: f64) -> anyhow::Result<()> {
+        fn run<S: GameServer>(
+            server: &mut Option<S>,
+            can_block: bool,
+            runner_frequency: f64,
+        ) -> anyhow::Result<()> {
             if let Some(server) = server {
-                if server.does_run() {
-                    server.run(runner_frequency)?;
-                }
+                server.run(can_block, runner_frequency)?;
             }
             Ok(())
         }
 
-        run(&mut self.audio, runner_frequency)?;
-        run(&mut self.draw, runner_frequency)?;
-        run(&mut self.update, runner_frequency)?;
+        let can_block = [
+            self.audio.is_some(),
+            self.draw.is_some(),
+            self.update.is_some(),
+        ]
+        .into_iter()
+        .filter(|b| *b)
+        .count()
+            <= 1;
+        run(&mut self.audio, can_block, runner_frequency)?;
+        run(&mut self.draw, can_block, runner_frequency)?;
+        run(&mut self.update, can_block, runner_frequency)?;
         Ok(())
     }
 
     pub fn does_run(&self) -> bool {
-        self.audio
-            .as_ref()
-            .map(|s| s.does_run())
-            .unwrap_or_default()
-            || self.draw.as_ref().map(|s| s.does_run()).unwrap_or_default()
-            || self
-                .update
-                .as_ref()
-                .map(|s| s.does_run())
-                .unwrap_or_default()
+        self.audio.is_some() || self.update.is_some() || self.draw.is_some()
     }
 }

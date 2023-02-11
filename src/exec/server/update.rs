@@ -26,7 +26,7 @@ pub struct Server {
 }
 
 impl GameServer for Server {
-    fn run(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+    fn run(&mut self, _: bool, runner_frequency: f64) -> anyhow::Result<()> {
         self.base.run("Update", runner_frequency);
         let messages = self
             .base

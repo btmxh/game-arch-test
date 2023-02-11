@@ -1,13 +1,17 @@
 use crate::{
     events::GameUserEvent,
-    exec::server::{
-        draw::{RecvMsg, SendMsg, ServerChannel},
-        BaseGameServer,
+    exec::{
+        server::{
+            draw::{RecvMsg, SendMsg, ServerChannel},
+            BaseGameServer,
+        },
+        DEFAULT_RECV_TIMEOUT,
     },
     graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
     scene::main::RootScene,
     test::result::TestError,
     ui::utils::geom::UISize,
+    utils::args::args,
 };
 use std::{borrow::Cow, collections::HashMap, ffi::CString, num::NonZeroU32};
 
@@ -150,11 +154,15 @@ impl DrawContext {
         Ok(())
     }
 
-    fn process_messages(&mut self, root_scene: &mut Option<RootScene>) -> anyhow::Result<()> {
+    fn process_messages(
+        &mut self,
+        can_block: bool,
+        root_scene: &mut Option<RootScene>,
+    ) -> anyhow::Result<()> {
         let messages = self
             .base
             .receiver
-            .try_iter(None)
+            .try_iter(can_block.then_some(DEFAULT_RECV_TIMEOUT))
             .context("thread runner channel was unexpectedly closed")?
             .collect::<Vec<_>>();
         for message in messages {
@@ -215,14 +223,17 @@ impl DrawContext {
     pub fn draw(
         &mut self,
         root_scene: &mut Option<RootScene>,
+        can_block: bool,
         runner_frequency: f64,
     ) -> anyhow::Result<()> {
         self.base.run("Draw", runner_frequency);
-        self.process_messages(root_scene)?;
-        if let Some(root_scene) = root_scene {
-            root_scene.draw(self);
+        self.process_messages(can_block, root_scene)?;
+        if !args().headless {
+            if let Some(root_scene) = root_scene {
+                root_scene.draw(self);
+            }
+            self.gl_surface.swap_buffers(&self.gl_context)?;
         }
-        self.gl_surface.swap_buffers(&self.gl_context)?;
         Ok(())
     }
 }

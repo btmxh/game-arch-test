@@ -264,6 +264,7 @@ impl TestWidgetBuilder {
             .draw(enclose!((test_log_name) move |slf, ctx| {
                 let log = ctx.get_test_log(&test_log_name);
                 log.push_str(slf.test_id.to_string().as_str());
+                log.push('\n');
             }))
             .handle_propagating_event(enclose!((test_log_name) move |slf, ctx, event| {
                 let log = ctx.main_ctx.get_test_log(&test_log_name);
@@ -271,6 +272,7 @@ impl TestWidgetBuilder {
                     log.push_str(format!("propagating - {event:?} - ").as_str());
                 }
                 log.push_str(slf.test_id.to_string().as_str());
+                log.push('\n');
 
                 (!consume_propagate).then_some(event)
             }))
@@ -280,6 +282,7 @@ impl TestWidgetBuilder {
                     log.push_str(format!("focus - {event:?} - ").as_str());
                 }
                 log.push_str(slf.test_id.to_string().as_str());
+                log.push('\n');
             }))
             .handle_cursor_event(enclose!((test_log_name) move |slf, ctx, event| {
                 let log = ctx.main_ctx.get_test_log(&test_log_name);
@@ -287,6 +290,7 @@ impl TestWidgetBuilder {
                     log.push_str(format!("cursor - {event:?} - ").as_str());
                 }
                 log.push_str(slf.test_id.to_string().as_str());
+                log.push('\n');
 
                 mouse_passthrough.then_some(event)
             }))

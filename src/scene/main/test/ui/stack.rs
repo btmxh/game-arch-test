@@ -211,11 +211,11 @@ mod draw_tests {
             "12345",
             [1, 2, 3, 4, 5],
             r#"
-draw - 1
-draw - 2
-draw - 3
-draw - 4
-draw - 5
+1
+2
+3
+4
+5
 "#,
         )?;
         Ok(())

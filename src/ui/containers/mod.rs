@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bitflags::bitflags;
 
-use crate::utils::mutex::MutexGuard;
+use crate::{graphics::context::DrawContext, utils::mutex::MutexGuard};
 
 use super::{
     event::{UICursorEvent, UIFocusEvent, UIPropagatingEvent},
@@ -152,5 +152,12 @@ impl<T: ContainerWidget> Widget for T {
                     Some(event)
                 }
             })
+    }
+
+    fn draw(&self, ctx: &mut DrawContext) {
+        let children = self.lock_children();
+        for widget in self.iterate_child_widgets(&children) {
+            widget.draw(ctx);
+        }
     }
 }

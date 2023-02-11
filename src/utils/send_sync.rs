@@ -6,14 +6,20 @@ pub type PhantomUnsend = PhantomData<MutexGuard<'static, ()>>;
 #[macro_export]
 macro_rules! assert_send {
     ($x: ty) => {
-        static_assertions::assert_impl_all!($x: Send)
+        #[allow(clippy::extra_unused_type_parameters)]
+        {
+            static_assertions::assert_impl_all!($x: Send);
+        }
     };
 }
 
 #[macro_export]
 macro_rules! assert_sync {
     ($x: ty) => {
-        static_assertions::assert_impl_all!($x: Sync)
+        #[allow(clippy::extra_unused_type_parameters)]
+        {
+            static_assertions::assert_impl_all!($x: Sync);
+        }
     };
 }
 

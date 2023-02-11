@@ -147,6 +147,6 @@ impl ServerSendChannel<RecvMsg> {
 
 #[test]
 fn test_send_sync() {
-    fn test_send<T: Send>() {}
-    test_send::<SendServer>();
+    use crate::assert_send;
+    assert_send!(SendServer);
 }

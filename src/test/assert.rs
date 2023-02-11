@@ -4,7 +4,7 @@ use crate::utils::has_metric::HasDistance;
 
 use super::result::{Comparison, TestError, TestResult};
 
-pub fn assert_equals<T: PartialEq + Debug>(
+pub fn assert_equals<T: PartialEq + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,
@@ -22,7 +22,7 @@ pub fn assert_equals<T: PartialEq + Debug>(
     }
 }
 
-pub fn assert_not_equals<T: PartialEq + Debug>(
+pub fn assert_not_equals<T: PartialEq + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,
@@ -40,7 +40,7 @@ pub fn assert_not_equals<T: PartialEq + Debug>(
     }
 }
 
-pub fn assert_less_than<T: PartialOrd + Debug>(
+pub fn assert_less_than<T: PartialOrd + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,
@@ -58,7 +58,7 @@ pub fn assert_less_than<T: PartialOrd + Debug>(
     }
 }
 
-pub fn assert_greater_than<T: PartialOrd + Debug>(
+pub fn assert_greater_than<T: PartialOrd + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,
@@ -76,7 +76,7 @@ pub fn assert_greater_than<T: PartialOrd + Debug>(
     }
 }
 
-pub fn assert_less_equals<T: PartialOrd + Debug>(
+pub fn assert_less_equals<T: PartialOrd + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,
@@ -94,7 +94,7 @@ pub fn assert_less_equals<T: PartialOrd + Debug>(
     }
 }
 
-pub fn assert_greater_equals<T: PartialOrd + Debug>(
+pub fn assert_greater_equals<T: PartialOrd + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,
@@ -142,7 +142,7 @@ pub fn assert_unreachable(msg: impl Into<Cow<'static, str>>) -> TestResult {
 
 const TOLERANCE: f32 = 1e-4;
 
-pub fn assert_equals_err<T: HasDistance + Debug>(
+pub fn assert_equals_err<T: HasDistance + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,
@@ -161,7 +161,7 @@ pub fn assert_equals_err<T: HasDistance + Debug>(
     }
 }
 
-pub fn assert_not_equals_err<T: HasDistance + Debug>(
+pub fn assert_not_equals_err<T: HasDistance + Debug + ?Sized>(
     found: &T,
     expected: &T,
     msg: impl Into<Cow<'static, str>>,

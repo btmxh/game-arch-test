@@ -7,7 +7,7 @@ pub fn test(main_ctx: &mut MainContext, node: &Arc<ParentTestNode>) -> anyhow::R
     layout_tests::test(main_ctx, &node);
     // propagating_tests::test(main_ctx, &node)?;
     // cursor_tests::test(main_ctx, &node)?;
-    // draw_tests::test(main_ctx, &node)?;
+    draw_tests::test(main_ctx, &node)?;
     Ok(())
 }
 
@@ -182,6 +182,98 @@ mod layout_tests {
                 assert_equals_err(&widget.get_bounds(), &expected_bounds, msg)?;
             }
         }
+
+        Ok(())
+    }
+}
+
+mod draw_tests {
+    use std::{collections::HashSet, sync::Arc};
+
+    use anyhow::Context;
+
+    use crate::{
+        exec::main_ctx::MainContext,
+        graphics::context::DrawContext,
+        scene::main::test::ui::{TestWidgetBuilder, TestWidgetId},
+        test::{assert::assert_equals, result::TestResult, tree::ParentTestNode},
+        ui::{containers::stack::Stack, Alignment, HorizontalAlignment, VerticalAlignment},
+    };
+
+    pub(super) fn test(
+        main_ctx: &mut MainContext,
+        node: &Arc<ParentTestNode>,
+    ) -> anyhow::Result<()> {
+        let node = node.new_child_parent("draw");
+        do_test(
+            main_ctx,
+            &node,
+            "12345",
+            [1, 2, 3, 4, 5],
+            r#"
+draw - 1
+draw - 2
+draw - 3
+draw - 4
+draw - 5
+"#,
+        )?;
+        Ok(())
+    }
+
+    fn do_test<const N: usize>(
+        main_ctx: &mut MainContext,
+        node: &Arc<ParentTestNode>,
+        name: &'static str,
+        widget_test_ids: [TestWidgetId; N],
+        expected_log: &'static str,
+    ) -> anyhow::Result<()> {
+        let node = node.new_child_leaf(name);
+        debug_assert!(
+            widget_test_ids.len()
+                == widget_test_ids
+                    .iter()
+                    .copied()
+                    .collect::<HashSet<_>>()
+                    .len(),
+            "widget test ids must be unique"
+        );
+
+        let stack = Arc::new(Stack::new());
+
+        for id in widget_test_ids {
+            let widget = TestWidgetBuilder::new().build(
+                id,
+                node.full_name().to_owned(),
+                false,
+                false,
+                false,
+            );
+            stack.push_arc(
+                widget.clone(),
+                Alignment::new(HorizontalAlignment::Middle, VerticalAlignment::Center),
+            );
+        }
+
+        let name = node.full_name().to_owned();
+        main_ctx
+            .channels
+            .draw
+            .execute_draw_event(move |ctx, _| {
+                node.update(test_body(ctx, name, expected_log));
+                []
+            })
+            .context("unable to send test to run on draw server")?;
+
+        Ok(())
+    }
+
+    fn test_body(ctx: &mut DrawContext, name: String, expected_log: &str) -> TestResult {
+        let log = ctx.pop_test_log(name.as_str())?;
+        let log = log.trim();
+        let expected_log = expected_log.trim();
+
+        assert_equals(log, expected_log, "draw log mismatch")?;
 
         Ok(())
     }

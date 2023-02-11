@@ -197,7 +197,7 @@ mod draw_tests {
         graphics::context::DrawContext,
         scene::main::test::ui::{TestWidgetBuilder, TestWidgetId},
         test::{assert::assert_equals, result::TestResult, tree::ParentTestNode},
-        ui::{containers::stack::Stack, Alignment, HorizontalAlignment, VerticalAlignment},
+        ui::{containers::stack::Stack, Alignment, HorizontalAlignment, VerticalAlignment, Widget},
     };
 
     pub(super) fn test(
@@ -260,6 +260,7 @@ draw - 5
             .channels
             .draw
             .execute_draw_event(move |ctx, _| {
+                stack.draw(ctx);
                 node.update(test_body(ctx, name, expected_log));
                 []
             })

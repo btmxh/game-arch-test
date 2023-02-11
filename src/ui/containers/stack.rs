@@ -80,6 +80,8 @@ impl ContainerWidget for Stack {
             container_size.height = container_size.height.max(size.height);
         }
 
+        self.bounds.lock().size = container_size;
+
         for StackChild {
             widget,
             size,
@@ -103,7 +105,9 @@ impl Stack {
     pub fn new() -> Self {
         Self {
             id: acquire_widget_id(),
-            ..Default::default()
+            children: Mutex::new(Vec::new()),
+            bounds: Mutex::new(UIRect::ZERO),
+            hover_children: Mutex::new(Vec::new()),
         }
     }
 

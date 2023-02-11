@@ -1,4 +1,6 @@
 use std::{
+    borrow::Cow,
+    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -15,7 +17,7 @@ use crate::{
     events::{GameEvent, GameUserEvent},
     graphics::{context::DrawContext, wrappers::vertex_array::VertexArrayHandle},
     scene::main::RootScene,
-    test::TestManager,
+    test::{result::TestError, TestManager},
     utils::{args::args, error::ResultExt},
 };
 
@@ -27,6 +29,7 @@ use super::{
 };
 
 pub struct MainContext {
+    pub test_logs: HashMap<Cow<'static, str>, String>,
     pub test_manager: Option<Arc<TestManager>>,
     pub executor: GameServerExecutor,
     pub dummy_vao: VertexArrayHandle,
@@ -55,6 +58,7 @@ impl MainContext {
             event_loop_proxy,
             dispatch_list: DispatchList::new(),
             channels,
+            test_logs: HashMap::new(),
         };
 
         if let Some(test_manager) = slf.test_manager.as_ref() {
@@ -67,6 +71,23 @@ impl MainContext {
         }
 
         Ok(slf)
+    }
+
+    pub fn get_test_log(&mut self, name: &str) -> &mut String {
+        if !self.test_logs.contains_key(name) {
+            self.test_logs
+                .insert(Cow::Owned(name.to_owned()), String::new());
+        }
+
+        self.test_logs.get_mut(name).unwrap()
+    }
+
+    pub fn pop_test_log(&mut self, name: &str) -> Result<String, TestError> {
+        self.test_logs
+            .remove(name)
+            .ok_or_else(|| TestError::AssertUnreachable {
+                custom_msg: Cow::Owned(format!("test logs for {name} not found (in main context)")),
+            })
     }
 
     pub fn handle_event(

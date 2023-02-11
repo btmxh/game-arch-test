@@ -6,6 +6,7 @@ use self::headless::Headless;
 
 pub mod headless;
 pub mod timeout_delay;
+pub mod ui;
 
 pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<SceneContainer> {
     let mut container = SceneContainer::new();
@@ -19,6 +20,7 @@ pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<SceneContainer> {
         timeout_delay::new(main_ctx, node).context("unable to create TimeoutDelay scene")?,
     );
     container.push_all(Headless::new(main_ctx, node).context("unable to create Headless scene")?);
+    container.push_all(ui::new(main_ctx, node).context("unable to create UI scene")?);
     main_ctx
         .test_manager
         .as_ref()

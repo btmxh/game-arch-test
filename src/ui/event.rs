@@ -13,6 +13,7 @@ pub struct CursorPosition {
     pub absolute: UIPos,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum DragDropAction {
     Hover(PathBuf),
     Drop(PathBuf),
@@ -20,6 +21,7 @@ pub enum DragDropAction {
 }
 
 // applied to only the focused widget
+#[derive(Clone, Debug, PartialEq)]
 pub enum UIFocusEvent {
     Focus(bool),
     ReceivedCharacter(char),
@@ -28,6 +30,7 @@ pub enum UIFocusEvent {
 }
 
 // propagated from the root widget
+#[derive(Clone, Debug, PartialEq)]
 pub enum UIPropagatingEvent {
     ThemeChanged(Theme),
     DragDrop(DragDropAction),

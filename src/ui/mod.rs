@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use event::{UICursorEvent, UIFocusEvent, UIPropagatingEvent};
 use utils::geom::{UIPos, UIRect, UISize};
 
-use crate::{exec::main_ctx::MainContext, graphics::context::DrawContext, scene::main::RootScene};
+use crate::{exec::main_ctx::MainContext, graphics::context::DrawContext};
 
 pub mod containers;
 pub mod controls;
@@ -20,10 +20,10 @@ pub fn acquire_widget_id() -> usize {
 
 pub struct EventContext<'a> {
     pub main_ctx: &'a mut MainContext,
-    pub root_scene: &'a RootScene,
+    ////  pub root_scene: &'a RootScene,
 }
 
-pub trait Widget {
+pub trait Widget: Send + Sync {
     fn id(&self) -> WidgetId;
 
     fn handle_propagating_event(
@@ -51,12 +51,21 @@ pub trait Widget {
     fn get_bounds(&self) -> UIRect;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct UISizeConstraint {
     pub min: UISize,
     pub max: UISize,
 }
 
 impl UISizeConstraint {
+    pub fn new(min: UISize, max: UISize) -> Self {
+        Self { min, max }
+    }
+
+    pub fn exact(size: UISize) -> Self {
+        Self::new(size, size)
+    }
+
     pub fn test(&self, size: &UISize) -> bool {
         self.min.width <= size.width
             && size.width <= self.max.width
@@ -65,19 +74,29 @@ impl UISizeConstraint {
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Alignment {
     pub horizontal: HorizontalAlignment,
     pub vertical: VerticalAlignment,
 }
 
-#[derive(Clone, Copy, Debug, Hash)]
+impl Alignment {
+    pub fn new(horizontal: HorizontalAlignment, vertical: VerticalAlignment) -> Self {
+        Self {
+            horizontal,
+            vertical,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum HorizontalAlignment {
     Left,
     Right,
     Middle,
 }
 
-#[derive(Clone, Copy, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum VerticalAlignment {
     Top,
     Bottom,

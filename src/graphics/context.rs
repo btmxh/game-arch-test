@@ -6,9 +6,10 @@ use crate::{
     },
     graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
     scene::main::RootScene,
+    test::result::TestError,
     ui::utils::geom::UISize,
 };
-use std::{ffi::CString, num::NonZeroU32};
+use std::{borrow::Cow, collections::HashMap, ffi::CString, num::NonZeroU32};
 
 use anyhow::Context;
 use glutin::{
@@ -23,6 +24,7 @@ use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use crate::display::SendRawHandle;
 
 pub struct DrawContext {
+    pub test_logs: HashMap<Cow<'static, str>, String>,
     pub handles: HandleContainer,
     pub swap_interval: SwapInterval,
     pub gl_surface: Surface<WindowSurface>,
@@ -36,6 +38,7 @@ pub struct DrawContext {
 }
 
 pub struct SendDrawContext {
+    pub test_logs: HashMap<Cow<'static, str>, String>,
     pub handles: SendHandleContainer,
     pub swap_interval: SwapInterval,
     pub gl_context: NotCurrentContext,
@@ -111,6 +114,7 @@ impl SendDrawContext {
                 gl_config,
                 swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
                 handles: SendHandleContainer::new(),
+                test_logs: HashMap::new(),
             },
             ServerChannel {
                 sender,
@@ -122,6 +126,23 @@ impl SendDrawContext {
 }
 
 impl DrawContext {
+    pub fn get_test_log(&mut self, name: &str) -> &mut String {
+        if !self.test_logs.contains_key(name) {
+            self.test_logs
+                .insert(Cow::Owned(name.to_owned()), String::new());
+        }
+
+        self.test_logs.get_mut(name).unwrap()
+    }
+
+    pub fn pop_test_log(&mut self, name: &str) -> Result<String, TestError> {
+        self.test_logs
+            .remove(name)
+            .ok_or_else(|| TestError::AssertUnreachable {
+                custom_msg: Cow::Owned(format!("test logs for {name} not found (in draw server)")),
+            })
+    }
+
     pub fn set_swap_interval(&mut self, swap_interval: SwapInterval) -> anyhow::Result<()> {
         self.gl_surface
             .set_swap_interval(&self.gl_context, swap_interval)?;
@@ -187,6 +208,7 @@ impl DrawContext {
             ui_size: self.ui_size,
             swap_interval: self.swap_interval,
             handles: self.handles.to_send(),
+            test_logs: self.test_logs,
         })
     }
 
@@ -235,6 +257,7 @@ impl SendDrawContext {
             ui_size: self.ui_size,
             swap_interval: self.swap_interval,
             handles: self.handles.to_nonsend(),
+            test_logs: self.test_logs,
         })
     }
 }

@@ -95,13 +95,18 @@ fn equals_2d(lhs: (f32, f32), rhs: (f32, f32)) -> bool {
     dx * dx + dy * dy <= EPSILON
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct UIRect {
     pub pos: UIPos,
     pub size: UISize,
 }
 
 impl UIRect {
+    pub const ZERO: UIRect = UIRect::new(UIPos::ZERO, UISize::ZERO);
+
+    pub const fn new(pos: UIPos, size: UISize) -> Self {
+        Self { pos, size }
+    }
     pub fn contains(&self, pos: UIPos) -> bool {
         self.pos.x <= pos.x
             && pos.x <= self.pos.x + self.size.width

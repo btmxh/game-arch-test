@@ -171,4 +171,8 @@ impl<C> GenericTestNode<C> {
     pub fn finished(&self) -> bool {
         self.result.lock().is_some()
     }
+
+    pub fn full_name(&self) -> &str {
+        self.full_name.as_str()
+    }
 }

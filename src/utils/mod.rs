@@ -6,6 +6,7 @@ pub mod debug_handle;
 pub mod enclose;
 pub mod error;
 pub mod frequency_runner;
+pub mod has_metric;
 pub mod log;
 pub mod mpsc;
 pub mod mutex;

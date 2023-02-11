@@ -2,10 +2,7 @@ use crate::{
     events::GameUserEvent,
     graphics::context::{DrawContext, SendDrawContext},
     scene::main::RootScene,
-    utils::{
-        args::args,
-        mpsc::{Receiver, Sender},
-    },
+    utils::mpsc::{Receiver, Sender},
 };
 use std::any::Any;
 
@@ -55,7 +52,7 @@ impl GameServer for Server {
     }
 
     fn does_run(&self) -> bool {
-        !args().headless
+        true
     }
 }
 

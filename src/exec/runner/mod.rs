@@ -38,8 +38,8 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn run_single(&mut self) -> anyhow::Result<()> {
-        self.container.run_single(self.frequency)?;
+    pub fn run_single(&mut self, is_main_runner: bool) -> anyhow::Result<()> {
+        self.container.run_single(is_main_runner, self.frequency)?;
         self.sync.sync(self.frequency);
         Ok(())
     }
@@ -91,7 +91,9 @@ impl ThreadRunner {
                 }
             }
 
-            self.base.run_single().expect("error while running servers");
+            self.base
+                .run_single(false)
+                .expect("error while running servers");
         }
     }
 }

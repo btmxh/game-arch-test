@@ -29,30 +29,35 @@ impl ServerMover for ServerContainer {
 }
 
 impl ServerContainer {
-    pub fn run_single(&mut self, runner_frequency: f64) -> anyhow::Result<()> {
+    pub fn run_single(
+        &mut self,
+        is_main_runner: bool,
+        runner_frequency: f64,
+    ) -> anyhow::Result<()> {
         fn run<S: GameServer>(
             server: &mut Option<S>,
-            can_block: bool,
+            single: bool,
             runner_frequency: f64,
         ) -> anyhow::Result<()> {
             if let Some(server) = server {
-                server.run(can_block, runner_frequency)?;
+                server.run(single, runner_frequency)?;
             }
             Ok(())
         }
 
-        let can_block = [
-            self.audio.is_some(),
-            self.draw.is_some(),
-            self.update.is_some(),
-        ]
-        .into_iter()
-        .filter(|b| *b)
-        .count()
-            <= 1;
-        run(&mut self.audio, can_block, runner_frequency)?;
-        run(&mut self.draw, can_block, runner_frequency)?;
-        run(&mut self.update, can_block, runner_frequency)?;
+        let single = !is_main_runner
+            && [
+                self.audio.is_some(),
+                self.draw.is_some(),
+                self.update.is_some(),
+            ]
+            .into_iter()
+            .filter(|b| *b)
+            .count()
+                <= 1;
+        run(&mut self.audio, single, runner_frequency)?;
+        run(&mut self.draw, single, runner_frequency)?;
+        run(&mut self.update, single, runner_frequency)?;
         Ok(())
     }
 

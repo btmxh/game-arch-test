@@ -40,9 +40,9 @@ pub struct SendServer {
 }
 
 impl GameServer for Server {
-    fn run(&mut self, can_block: bool, runner_frequency: f64) -> anyhow::Result<()> {
+    fn run(&mut self, single: bool, runner_frequency: f64) -> anyhow::Result<()> {
         self.context
-            .draw(&mut self.root_scene, can_block, runner_frequency)
+            .draw(&mut self.root_scene, single, runner_frequency)
     }
 
     fn to_send(self) -> anyhow::Result<SendGameServer> {

@@ -41,7 +41,7 @@ impl Redraw {
                     .executor
                     .main_runner
                     .base
-                    .run_single()
+                    .run_single(true)
                     .expect("error running main runner");
             } else {
                 main_ctx.execute_draw_sync(|_, _| Ok(()))?;

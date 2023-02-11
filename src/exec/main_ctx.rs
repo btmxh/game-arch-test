@@ -183,7 +183,7 @@ impl MainContext {
                     self.executor
                         .main_runner
                         .base
-                        .run_single()
+                        .run_single(true)
                         .expect("error running main runner");
                 }
 

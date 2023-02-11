@@ -18,7 +18,7 @@ mod layout_tests {
         exec::main_ctx::MainContext,
         scene::main::test::ui::TestWidgetBuilder,
         test::{
-            assert::assert_equals_err,
+            assert::{assert_equals_err, assert_true},
             result::TestResult,
             tree::{LeafTestNode, ParentTestNode},
         },
@@ -35,14 +35,66 @@ mod layout_tests {
         node: &Arc<ParentTestNode>,
     ) {
         let node = node.new_child_parent("layout");
-        do_test(&node, "1", [
+        do_test(&node, "single_child_center_middle", [
             (100.0, 200.0, HorizontalAlignment::Middle, VerticalAlignment::Center),
         ], [
-            (50.0, 50.0, [(0.0, 0.0, 50.0, 50.0)]),
-            (100.0, 100.0, [(0.0, 0.0, 100.0, 100.0)]),
-            (200.0, 200.0, [(50.0, 0.0, 100.0, 200.0)]),
-            (500.0, 500.0, [(200.0, 150.0, 100.0, 200.0)]),
+            (50.0, 50.0, 50.0, 50.0, [(0.0, 0.0, 50.0, 50.0)]),
+            (100.0, 100.0, 100.0, 100.0, [(0.0, 0.0, 100.0, 100.0)]),
+            (200.0, 200.0, 200.0, 200.0, [(50.0, 0.0, 100.0, 200.0)]),
+            (500.0, 500.0, 500.0, 500.0, [(200.0, 150.0, 100.0, 200.0)]),
+            (0.0, 0.0, 1e9, 1e9, [(0.0, 0.0, 100.0, 200.0)]),
         ]);
+
+        do_test(&node, "single_child_top_left", [
+            (100.0, 200.0, HorizontalAlignment::Left, VerticalAlignment::Top),
+        ], [
+            (50.0, 50.0, 50.0, 50.0, [(0.0, 0.0, 50.0, 50.0)]),
+            (100.0, 100.0, 100.0, 100.0, [(0.0, 0.0, 100.0, 100.0)]),
+            (200.0, 200.0, 200.0, 200.0, [(0.0, 0.0, 100.0, 200.0)]),
+            (500.0, 500.0, 500.0, 500.0, [(0.0, 0.0, 100.0, 200.0)]),
+            (0.0, 0.0, 1e9, 1e9, [(0.0, 0.0, 100.0, 200.0)]),
+        ]);
+
+        do_test(&node, "single_child_bottom_right", [
+            (100.0, 200.0, HorizontalAlignment::Right, VerticalAlignment::Bottom),
+        ], [
+            (50.0, 50.0, 50.0, 50.0, [(0.0, 0.0, 50.0, 50.0)]),
+            (100.0, 100.0, 100.0, 100.0, [(0.0, 0.0, 100.0, 100.0)]),
+            (200.0, 200.0, 200.0, 200.0, [(100.0, 0.0, 100.0, 200.0)]),
+            (500.0, 500.0, 500.0, 500.0, [(400.0, 300.0, 100.0, 200.0)]),
+            (0.0, 0.0, 1e9, 1e9, [(0.0, 0.0, 100.0, 200.0)]),
+        ]);
+
+        do_test(&node, "lazy_child", [
+            // setitng pref_size to 0x0 is equivalent to always picking the minimum size
+            (0.0, 0.0, HorizontalAlignment::Middle, VerticalAlignment::Center),
+            (0.0, 0.0, HorizontalAlignment::Left, VerticalAlignment::Top),
+            (0.0, 0.0, HorizontalAlignment::Right, VerticalAlignment::Bottom),
+        ], [
+            (0.0, 0.0, 100.0, 200.0, [(0.0, 0.0, 0.0, 0.0); 3]),
+            (100.0, 200.0, 100.0, 200.0, [
+                (50.0, 100.0, 0.0, 0.0),
+                (0.0, 0.0, 0.0, 0.0),
+                (100.0, 200.0, 0.0, 0.0),
+            ]),
+            (100.0, 200.0, 300.0, 400.0, [
+                (50.0, 100.0, 0.0, 0.0),
+                (0.0, 0.0, 0.0, 0.0),
+                (100.0, 200.0, 0.0, 0.0),
+            ]),
+        ]);
+
+        do_test(&node, "greedy_child", [
+            // f32::INFINITY is mouthful, we will just use 1e9 instead
+            // setitng pref_size to INF is equivalent to always picking the maximum size
+            (1e9, 1e9, HorizontalAlignment::Middle, VerticalAlignment::Center),
+            (1e9, 1e9, HorizontalAlignment::Left, VerticalAlignment::Top),
+            (1e9, 1e9, HorizontalAlignment::Right, VerticalAlignment::Bottom),
+        ], [
+            (0.0, 0.0, 100.0, 200.0, [(0.0, 0.0, 100.0, 200.0); 3]),
+            (100.0, 200.0, 100.0, 200.0, [(0.0, 0.0, 100.0, 200.0); 3]),
+            (100.0, 200.0, 300.0, 400.0, [(0.0, 0.0, 300.0, 400.0); 3]),
+        ])
     }
 
     fn do_test<const N: usize>(
@@ -56,8 +108,10 @@ mod layout_tests {
         ); N],
         expected_results: impl IntoIterator<
             Item = (
-                /*container_width:*/ f32,
-                /*container_height:*/ f32,
+                /*container_min_width:*/ f32,
+                /*container_min_height:*/ f32,
+                /*container_max_width:*/ f32,
+                /*container_max_height:*/ f32,
                 /*child_layouts:*/ [(f32, f32, f32, f32); N],
             ),
         >,
@@ -76,8 +130,10 @@ mod layout_tests {
         ); N],
         expected_results: impl IntoIterator<
             Item = (
-                /*container_width:*/ f32,
-                /*container_height:*/ f32,
+                /*container_min_width:*/ f32,
+                /*container_min_height:*/ f32,
+                /*container_max_width:*/ f32,
+                /*container_max_height:*/ f32,
                 /*child_layouts:*/ [(f32, f32, f32, f32); N],
             ),
         >,
@@ -105,24 +161,25 @@ mod layout_tests {
             stack.push_arc(widget.clone(), *alignment)
         }
 
-        for (test_case_index, (container_width, container_height, child_layouts)) in
+        for (test_case_index, (min_width, min_height, max_width, max_height, child_layouts)) in
             expected_results.into_iter().enumerate()
         {
-            let size = UISize::new(container_width, container_height);
-            stack.layout(&UISizeConstraint::exact(size));
+            let constraints = UISizeConstraint::new(
+                UISize::new(min_width, min_height),
+                UISize::new(max_width, max_height),
+            );
+            stack.layout(&constraints);
 
-            assert_equals_err(
-                &stack.get_bounds().size,
-                &size,
-                format!("container bounds mismatch in test case {test_case_index}"),
-            )?;
+            let container_size = stack.get_bounds().size;
+            assert_true(constraints.test(&container_size), format!("container size does not fits (constraits: {constraints:?}, actual size: {container_size:?})"))?;
 
-            let msg = format!("child bounds mismatch in test case {test_case_index}");
             for (i, (x, y, w, h)) in child_layouts.into_iter().enumerate() {
                 let widget = &widgets.get(i).expect("widgets.len() == N").0;
                 let expected_bounds = UIRect::new(UIPos::new(x, y), UISize::new(w, h));
 
-                assert_equals_err(&widget.get_bounds(), &expected_bounds, msg.clone())?;
+                let msg =
+                    format!("child (index: {i}) bounds mismatch in test case {test_case_index}");
+                assert_equals_err(&widget.get_bounds(), &expected_bounds, msg)?;
             }
         }
 

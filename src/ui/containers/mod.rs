@@ -167,9 +167,16 @@ impl<T: ContainerWidget> Widget for T {
     }
 
     fn draw(&self, ctx: &mut DrawContext) {
+        let old_len = ctx.transform_stack.len();
+        ctx.transform_stack.push();
+        ctx.transform_stack.translate(self.get_bounds().pos);
+
         let children = self.lock_children();
         for widget in self.iterate_child_widgets(&children) {
             widget.draw(ctx);
         }
+
+        ctx.transform_stack.pop();
+        debug_assert!(old_len == ctx.transform_stack.len());
     }
 }

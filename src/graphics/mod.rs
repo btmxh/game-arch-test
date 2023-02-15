@@ -16,6 +16,7 @@ pub mod blur;
 pub mod context;
 pub mod debug_callback;
 pub mod quad_renderer;
+pub mod transform_stack;
 pub mod wrappers;
 
 #[derive(Debug)]

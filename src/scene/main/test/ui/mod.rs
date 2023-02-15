@@ -15,6 +15,7 @@ use crate::{
     utils::mutex::Mutex,
 };
 
+pub mod linear_box;
 pub mod stack;
 
 pub fn new(
@@ -23,6 +24,7 @@ pub fn new(
 ) -> anyhow::Result<SceneContainer> {
     let node = node.new_child_parent("ui");
     stack::test(main_ctx, &node)?;
+    linear_box::test(main_ctx, &node)?;
     Ok(SceneContainer::new())
 }
 

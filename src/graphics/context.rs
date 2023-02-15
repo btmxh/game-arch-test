@@ -23,8 +23,11 @@ use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 
 use crate::display::SendRawHandle;
 
+use super::transform_stack::TransformStack;
+
 pub struct DrawContext {
     pub test_logs: HashMap<Cow<'static, str>, String>,
+    pub transform_stack: TransformStack,
     pub handles: HandleContainer,
     pub swap_interval: SwapInterval,
     pub gl_surface: Surface<WindowSurface>,
@@ -39,6 +42,7 @@ pub struct DrawContext {
 
 pub struct SendDrawContext {
     pub test_logs: HashMap<Cow<'static, str>, String>,
+    pub transform_stack: TransformStack,
     pub handles: SendHandleContainer,
     pub swap_interval: SwapInterval,
     pub gl_context: NotCurrentContext,
@@ -115,6 +119,7 @@ impl SendDrawContext {
                 swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
                 handles: SendHandleContainer::new(),
                 test_logs: HashMap::new(),
+                transform_stack: TransformStack::default(),
             },
             ServerChannel {
                 sender,
@@ -209,6 +214,7 @@ impl DrawContext {
             swap_interval: self.swap_interval,
             handles: self.handles.to_send(),
             test_logs: self.test_logs,
+            transform_stack: self.transform_stack,
         })
     }
 
@@ -261,6 +267,7 @@ impl SendDrawContext {
             swap_interval: self.swap_interval,
             handles: self.handles.to_nonsend(),
             test_logs: self.test_logs,
+            transform_stack: self.transform_stack,
         })
     }
 }

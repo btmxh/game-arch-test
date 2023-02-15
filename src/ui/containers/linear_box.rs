@@ -27,13 +27,13 @@ pub struct LinearBox<A: Axis> {
 }
 
 impl<A: Axis> LinearBox<A> {
-    pub fn new(spacing: f32) -> Self {
+    pub fn new() -> Self {
         Self {
             id: acquire_widget_id(),
             children: Mutex::new(Vec::new()),
             hover: Mutex::new(Vec::new()),
             bounds: Mutex::new(UIRect::ZERO),
-            spacing: Mutex::new(spacing),
+            spacing: Mutex::new(4.0),
             padding: Mutex::new(Padding::default()),
         }
     }
@@ -53,7 +53,7 @@ impl<A: Axis> LinearBox<A> {
 
 impl<A: Axis> Default for LinearBox<A> {
     fn default() -> Self {
-        Self::new(4.0)
+        Self::new()
     }
 }
 

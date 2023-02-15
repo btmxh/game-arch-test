@@ -268,8 +268,9 @@ impl TestWidgetBuilder {
             }))
             .handle_propagating_event(enclose!((test_log_name) move |slf, ctx, event| {
                 let log = ctx.main_ctx.get_test_log(&test_log_name);
+                log.push_str("propagating - ");
                 if print_propagate_event {
-                    log.push_str(format!("propagating - {event:?} - ").as_str());
+                    log.push_str(format!("{event:?} - ").as_str());
                 }
                 log.push_str(slf.test_id.to_string().as_str());
                 log.push('\n');
@@ -278,16 +279,18 @@ impl TestWidgetBuilder {
             }))
             .handle_focus_event(enclose!((test_log_name) move |slf, ctx, event| {
                 let log = ctx.main_ctx.get_test_log(&test_log_name);
+                log.push_str("focus - ");
                 if print_focus_event {
-                    log.push_str(format!("focus - {event:?} - ").as_str());
+                    log.push_str(format!("{event:?} - ").as_str());
                 }
                 log.push_str(slf.test_id.to_string().as_str());
                 log.push('\n');
             }))
             .handle_cursor_event(enclose!((test_log_name) move |slf, ctx, event| {
                 let log = ctx.main_ctx.get_test_log(&test_log_name);
+                log.push_str("cursor - ");
                 if print_cursor_event {
-                    log.push_str(format!("cursor - {event:?} - ").as_str());
+                    log.push_str(format!("{event:?} - ").as_str());
                 }
                 log.push_str(slf.test_id.to_string().as_str());
                 log.push('\n');

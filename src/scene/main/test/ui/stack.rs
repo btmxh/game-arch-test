@@ -5,8 +5,8 @@ use crate::{exec::main_ctx::MainContext, test::tree::ParentTestNode};
 pub fn test(main_ctx: &mut MainContext, node: &Arc<ParentTestNode>) -> anyhow::Result<()> {
     let node = node.new_child_parent("stack_test");
     layout_tests::test(main_ctx, &node);
-    // propagating_tests::test(main_ctx, &node)?;
-    // cursor_tests::test(main_ctx, &node)?;
+    propagating_tests::test(main_ctx, &node);
+    cursor_tests::test(main_ctx, &node);
     draw_tests::test(main_ctx, &node)?;
     Ok(())
 }
@@ -122,12 +122,14 @@ mod layout_tests {
 
     fn test_body<const N: usize>(
         node: &Arc<LeafTestNode>,
-        widget_builders: [(
-            /*width:*/ f32,
-            /*height:*/ f32,
-            /*h_align:*/ HorizontalAlignment,
-            /*v_align:*/ VerticalAlignment,
-        ); N],
+        widget_builders: impl IntoIterator<
+            Item = (
+                /*width:*/ f32,
+                /*height:*/ f32,
+                /*h_align:*/ HorizontalAlignment,
+                /*v_align:*/ VerticalAlignment,
+            ),
+        >,
         expected_results: impl IntoIterator<
             Item = (
                 /*container_min_width:*/ f32,
@@ -218,6 +220,20 @@ mod draw_tests {
 5
 "#,
         )?;
+
+        do_test(
+            main_ctx,
+            &node,
+            "43251",
+            [4, 3, 2, 5, 1],
+            r#"
+4
+3
+2
+5
+1
+"#,
+        )?;
         Ok(())
     }
 
@@ -230,12 +246,11 @@ mod draw_tests {
     ) -> anyhow::Result<()> {
         let node = node.new_child_leaf(name);
         debug_assert!(
-            widget_test_ids.len()
-                == widget_test_ids
-                    .iter()
-                    .copied()
-                    .collect::<HashSet<_>>()
-                    .len(),
+            N == widget_test_ids
+                .iter()
+                .copied()
+                .collect::<HashSet<_>>()
+                .len(),
             "widget test ids must be unique"
         );
 
@@ -270,11 +285,265 @@ mod draw_tests {
     }
 
     fn test_body(ctx: &mut DrawContext, name: String, expected_log: &str) -> TestResult {
-        let log = ctx.pop_test_log(name.as_str())?;
+        let log = ctx.pop_test_log(name.as_str());
         let log = log.trim();
         let expected_log = expected_log.trim();
 
         assert_equals(log, expected_log, "draw log mismatch")?;
+
+        Ok(())
+    }
+}
+
+mod propagating_tests {
+    use std::sync::Arc;
+
+    use winit::window::Theme;
+
+    use crate::{
+        exec::main_ctx::MainContext,
+        scene::main::test::ui::TestWidgetBuilder,
+        test::{assert::assert_equals, result::TestResult, tree::ParentTestNode},
+        ui::{
+            containers::stack::Stack,
+            event::{UICursorEvent, UIPropagatingEvent},
+            utils::geom::{UIPos, UISize},
+            Alignment, EventContext, HorizontalAlignment, UISizeConstraint, VerticalAlignment,
+            Widget,
+        },
+    };
+
+    #[rustfmt::skip]
+    pub(super) fn test(main_ctx: &mut MainContext, node: &Arc<ParentTestNode>) {
+        let node = node.new_child_parent("propagating");
+        // the stack will have a predefined size of 1000x1000
+        do_test(
+            main_ctx,
+            &node,
+            "simple",
+            [
+                (300.0, 300.0, HorizontalAlignment::Middle, VerticalAlignment::Center, false),
+                (500.0, 500.0, HorizontalAlignment::Middle, VerticalAlignment::Center, true),
+            ],
+            Some("propagating - 1"),
+            [
+                (500.0, 600.0, "cursor - 1\ncursor - 1\npropagating - 1"),
+                (0.0, 0.0, ""),
+            ],
+        );
+    }
+
+    fn do_test(
+        main_ctx: &mut MainContext,
+        node: &Arc<ParentTestNode>,
+        name: &'static str,
+        widget_builders: impl IntoIterator<
+            Item = (
+                /*width:*/ f32,
+                /*height:*/ f32,
+                /*h_align:*/ HorizontalAlignment,
+                /*v_align:*/ VerticalAlignment,
+                /*consume_event*/ bool,
+            ),
+        >,
+        non_hover_output: Option<&'static str>,
+        hover_output: impl IntoIterator<
+            Item = (
+                /*cursor_x:*/ f32,
+                /*cursor_y:*/ f32,
+                /*expected_log:*/ &'static str,
+            ),
+        >,
+    ) {
+        let mut ctx = EventContext { main_ctx };
+        let node = node.new_child_leaf(name);
+        let stack = Arc::new(Stack::new());
+        for (i, (width, height, h_align, v_align, consume_event)) in
+            widget_builders.into_iter().enumerate()
+        {
+            let widget = TestWidgetBuilder::new()
+                .pref_size(width, height)
+                .consume_propagate(consume_event)
+                .build(i, node.full_name().to_owned(), false, false, false);
+            let align = Alignment::new(h_align, v_align);
+            stack.push_arc(widget, align);
+        }
+
+        stack.layout(&UISizeConstraint::exact(UISize::new(1000.0, 1000.0)));
+        stack.handle_cursor_event(&mut ctx, UICursorEvent::CursorEntered);
+
+        node.update(test_body(
+            &mut ctx,
+            node.full_name(),
+            &stack,
+            non_hover_output,
+            hover_output,
+        ));
+    }
+
+    fn test_body(
+        ctx: &mut EventContext,
+        name: &str,
+        stack: &Arc<Stack>,
+        non_hover_output: Option<&'static str>,
+        hover_output: impl IntoIterator<
+            Item = (
+                /*cursor_x:*/ f32,
+                /*cursor_y:*/ f32,
+                /*expected_log:*/ &'static str,
+            ),
+        >,
+    ) -> TestResult {
+        if let Some(non_hover_output) = non_hover_output {
+            stack.handle_propagating_event(ctx, UIPropagatingEvent::ThemeChanged(Theme::Dark));
+            let log = ctx.main_ctx.pop_test_log(name);
+            assert_equals(
+                log.trim(),
+                non_hover_output.trim(),
+                "non-hover test case event log mismatch",
+            )?;
+        }
+
+        for (i, (x, y, expected_log)) in hover_output.into_iter().enumerate() {
+            stack.handle_cursor_event(ctx, UICursorEvent::CursorMoved(UIPos::new(x, y)));
+            stack.handle_propagating_event(ctx, UIPropagatingEvent::TestHover);
+
+            let log = ctx.main_ctx.pop_test_log(name);
+            assert_equals(
+                log.trim(),
+                expected_log.trim(),
+                format!("hover test case {i} event log mismatch"),
+            )?;
+
+            // reset state
+            stack.handle_cursor_event(ctx, UICursorEvent::CursorExited);
+            stack.handle_cursor_event(ctx, UICursorEvent::CursorEntered);
+            ctx.main_ctx.pop_test_log(name);
+        }
+
+        Ok(())
+    }
+}
+
+mod cursor_tests {
+    use std::sync::Arc;
+
+    use crate::{
+        exec::main_ctx::MainContext,
+        scene::main::test::ui::TestWidgetBuilder,
+        test::{assert::assert_equals, result::TestResult, tree::ParentTestNode},
+        ui::{
+            containers::stack::Stack,
+            event::UICursorEvent,
+            utils::geom::{UIPos, UISize},
+            Alignment, EventContext, HorizontalAlignment, UISizeConstraint, VerticalAlignment,
+            Widget,
+        },
+    };
+
+    #[rustfmt::skip]
+    pub(super) fn test(main_ctx: &mut MainContext, node: &Arc<ParentTestNode>) {
+        let node = node.new_child_parent("cursor");
+        do_test(
+            main_ctx,
+            &node,
+            "simple",
+            [
+                (300.0, 300.0, HorizontalAlignment::Middle, VerticalAlignment::Center, false),
+                (500.0, 500.0, HorizontalAlignment::Middle, VerticalAlignment::Center, false),
+            ],
+            [
+                (
+                    &[(0.0f32, 0.0f32)] as &[(f32, f32)],
+                    "",
+                ),
+                (
+                    &[(500.0f32, 500.0f32)] as &[(f32, f32)],
+                    r"
+cursor - 1
+cursor - 1
+cursor - 1",
+                ),
+                (
+                    &[(500.0f32, 600.0f32), (0.0, 0.0)] as &[(f32, f32)],
+                    r"
+cursor - 1
+cursor - 1
+cursor - 1",
+                )
+            ],
+        );
+    }
+
+    fn do_test<'a>(
+        main_ctx: &mut MainContext,
+        node: &Arc<ParentTestNode>,
+        name: &'static str,
+        widget_builders: impl IntoIterator<
+            Item = (
+                /*width:*/ f32,
+                /*height:*/ f32,
+                /*h_align:*/ HorizontalAlignment,
+                /*v_align:*/ VerticalAlignment,
+                /*mouse_passthrough:*/ bool,
+            ),
+        >,
+        test_cases: impl IntoIterator<
+            Item = (
+                /* cursor_path: */ &'a [(f32, f32)],
+                /* expected_log: */ &'static str,
+            ),
+        >,
+    ) {
+        let node = node.new_child_leaf(name);
+        let stack = Arc::new(Stack::new());
+        for (i, (width, height, h_align, v_align, mouse_passthrough)) in
+            widget_builders.into_iter().enumerate()
+        {
+            let widget = TestWidgetBuilder::new()
+                .pref_size(width, height)
+                .mouse_passthrough(mouse_passthrough)
+                .build(i, node.full_name().to_owned(), false, false, false);
+            stack.push_arc(widget, Alignment::new(h_align, v_align));
+        }
+
+        stack.layout(&UISizeConstraint::exact(UISize::new(1000.0, 1000.0)));
+
+        let result = test_body(
+            &mut EventContext { main_ctx },
+            node.full_name(),
+            &stack,
+            test_cases,
+        );
+
+        node.update(result);
+    }
+
+    fn test_body<'a>(
+        ctx: &mut EventContext,
+        name: &str,
+        stack: &Arc<Stack>,
+        test_cases: impl IntoIterator<
+            Item = (
+                /* cursor_path: */ &'a [(f32, f32)],
+                /* expected_log: */ &'static str,
+            ),
+        >,
+    ) -> TestResult {
+        for (i, (cursor_path, expected_log)) in test_cases.into_iter().enumerate() {
+            stack.handle_cursor_event(ctx, UICursorEvent::CursorEntered);
+            for (x, y) in cursor_path {
+                stack.handle_cursor_event(ctx, UICursorEvent::CursorMoved(UIPos::new(*x, *y)));
+            }
+            stack.handle_cursor_event(ctx, UICursorEvent::CursorExited);
+
+            let log = ctx.main_ctx.pop_test_log(name);
+            assert_equals(
+                log.trim(),
+                expected_log.trim(),
+                format!("event log mismatch in test case {i}"),
+            )?;
+        }
 
         Ok(())
     }

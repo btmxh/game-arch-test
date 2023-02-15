@@ -7,12 +7,6 @@ use winit::{
 
 use super::utils::geom::UIPos;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CursorPosition {
-    pub relative: UIPos,
-    pub absolute: UIPos,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum DragDropAction {
     Hover(PathBuf),
@@ -27,6 +21,8 @@ pub enum UIFocusEvent {
     ReceivedCharacter(char),
     Ime(Ime),
     KeyboardInput(KeyboardInput),
+
+    TestEvent(u32),
 }
 
 // propagated from the root widget
@@ -39,6 +35,13 @@ pub enum UIPropagatingEvent {
         state: ElementState,
         button: MouseButton,
     },
+    TestHover,
+}
+
+impl UIPropagatingEvent {
+    pub fn only_propagate_hover(&self) -> bool {
+        !matches!(self, UIPropagatingEvent::ThemeChanged(_))
+    }
 }
 
 // special cursor events, entered and exited
@@ -46,5 +49,5 @@ pub enum UIPropagatingEvent {
 pub enum UICursorEvent {
     CursorEntered,
     CursorExited,
-    CursorMoved(CursorPosition),
+    CursorMoved(UIPos),
 }

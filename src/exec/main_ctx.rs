@@ -17,7 +17,7 @@ use crate::{
     events::{GameEvent, GameUserEvent},
     graphics::{context::DrawContext, wrappers::vertex_array::VertexArrayHandle},
     scene::main::RootScene,
-    test::{result::TestError, TestManager},
+    test::TestManager,
     utils::{args::args, error::ResultExt},
 };
 
@@ -82,12 +82,8 @@ impl MainContext {
         self.test_logs.get_mut(name).unwrap()
     }
 
-    pub fn pop_test_log(&mut self, name: &str) -> Result<String, TestError> {
-        self.test_logs
-            .remove(name)
-            .ok_or_else(|| TestError::AssertUnreachable {
-                custom_msg: Cow::Owned(format!("test logs for {name} not found (in main context)")),
-            })
+    pub fn pop_test_log(&mut self, name: &str) -> String {
+        self.test_logs.remove(name).unwrap_or_default()
     }
 
     pub fn handle_event(

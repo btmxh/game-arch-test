@@ -6,7 +6,6 @@ use crate::{
     },
     graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
     scene::main::RootScene,
-    test::result::TestError,
     ui::utils::geom::UISize,
     utils::args::args,
 };
@@ -136,12 +135,8 @@ impl DrawContext {
         self.test_logs.get_mut(name).unwrap()
     }
 
-    pub fn pop_test_log(&mut self, name: &str) -> Result<String, TestError> {
-        self.test_logs
-            .remove(name)
-            .ok_or_else(|| TestError::AssertUnreachable {
-                custom_msg: Cow::Owned(format!("test logs for {name} not found (in draw server)")),
-            })
+    pub fn pop_test_log(&mut self, name: &str) -> String {
+        self.test_logs.remove(name).unwrap_or_default()
     }
 
     pub fn set_swap_interval(&mut self, swap_interval: SwapInterval) -> anyhow::Result<()> {

@@ -85,12 +85,23 @@ impl<T: ContainerWidget> Widget for T {
     ) -> Option<UIPropagatingEvent> {
         self.handle_propagating_event_impl(ctx, event)
             .and_then(|mut event| {
-                let guard = self.lock_children();
-                for widget in self.iterate_child_widgets(&guard) {
-                    if let Some(evt) = widget.handle_propagating_event(ctx, event) {
-                        event = evt;
-                    } else {
-                        return None;
+                if event.only_propagate_hover() {
+                    let hover_widgets = self.hover_widgets();
+                    for widget in hover_widgets.iter() {
+                        if let Some(evt) = widget.handle_propagating_event(ctx, event) {
+                            event = evt;
+                        } else {
+                            return None;
+                        }
+                    }
+                } else {
+                    let guard = self.lock_children();
+                    for widget in self.iterate_child_widgets(&guard).rev() {
+                        if let Some(evt) = widget.handle_propagating_event(ctx, event) {
+                            event = evt;
+                        } else {
+                            return None;
+                        }
                     }
                 }
 
@@ -104,7 +115,7 @@ impl<T: ContainerWidget> Widget for T {
         event: UICursorEvent,
     ) -> Option<UICursorEvent> {
         self.handle_cursor_event_impl(ctx, event)
-            .and_then(|mut event| match event {
+            .and_then(|event| match event {
                 UICursorEvent::CursorEntered => Some(event),
                 UICursorEvent::CursorExited => {
                     let mut hover_widgets = self.hover_widgets();
@@ -115,8 +126,7 @@ impl<T: ContainerWidget> Widget for T {
 
                     Some(event)
                 }
-                UICursorEvent::CursorMoved(mut position) => {
-                    let relative_to_container_position = position.relative;
+                UICursorEvent::CursorMoved(position) => {
                     let mut hover_widgets = self.hover_widgets();
                     let mut last_hover_widgets = hover_widgets
                         .iter()
@@ -128,7 +138,7 @@ impl<T: ContainerWidget> Widget for T {
                         let id = widget.id();
                         let bounds = widget.get_bounds();
 
-                        if bounds.contains(relative_to_container_position) {
+                        if !bounds.contains(position) {
                             continue;
                         }
 
@@ -136,13 +146,15 @@ impl<T: ContainerWidget> Widget for T {
                             widget.handle_cursor_event(ctx, UICursorEvent::CursorEntered);
                         }
 
-                        position.relative.x = relative_to_container_position.x - bounds.pos.x;
-                        position.relative.y = relative_to_container_position.y - bounds.pos.y;
-                        if let Some(evt) = widget.handle_cursor_event(ctx, event) {
-                            event = evt;
-                        } else {
-                            return None;
-                        }
+                        hover_widgets.push(widget.clone());
+
+                        widget.handle_cursor_event(
+                            ctx,
+                            UICursorEvent::CursorMoved(UIPos::new(
+                                position.x - bounds.pos.x,
+                                position.y - bounds.pos.y,
+                            )),
+                        )?;
                     }
 
                     last_hover_widgets.values().for_each(|widget| {

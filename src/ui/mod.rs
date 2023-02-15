@@ -122,3 +122,107 @@ impl VerticalAlignment {
         }
     }
 }
+
+pub trait Axis: 'static {
+    type MainAlignment: Send + Sync + Clone + Copy + 'static;
+    type CrossAlignment: Send + Sync + Clone + Copy + 'static;
+    type OtherAxis: Axis<
+        MainAlignment = Self::CrossAlignment,
+        CrossAlignment = Self::MainAlignment,
+        OtherAxis = Self,
+    >;
+
+    fn get_pos(pos: UIPos) -> f32;
+    fn get_size(size: UISize) -> f32;
+
+    fn new_pos(this_axis: f32, other_axis: f32) -> UIPos;
+    fn new_size(this_axis: f32, other_axis: f32) -> UISize;
+
+    fn calc_align_offset(alignment: Self::MainAlignment, container_size: f32, size: f32) -> f32;
+}
+
+pub struct AxisX;
+pub struct AxisY;
+
+impl Axis for AxisX {
+    type MainAlignment = HorizontalAlignment;
+    type CrossAlignment = VerticalAlignment;
+
+    type OtherAxis = AxisY;
+
+    fn get_pos(pos: UIPos) -> f32 {
+        pos.x
+    }
+
+    fn get_size(size: UISize) -> f32 {
+        size.width
+    }
+
+    fn new_pos(this_axis: f32, other_axis: f32) -> UIPos {
+        UIPos::new(this_axis, other_axis)
+    }
+
+    fn new_size(this_axis: f32, other_axis: f32) -> UISize {
+        UISize::new(this_axis, other_axis)
+    }
+
+    fn calc_align_offset(alignment: Self::MainAlignment, container_size: f32, size: f32) -> f32 {
+        alignment.calc_x_offset(container_size, size)
+    }
+}
+
+impl Axis for AxisY {
+    type MainAlignment = VerticalAlignment;
+    type CrossAlignment = HorizontalAlignment;
+
+    type OtherAxis = AxisX;
+
+    fn get_pos(pos: UIPos) -> f32 {
+        pos.y
+    }
+
+    fn get_size(size: UISize) -> f32 {
+        size.height
+    }
+
+    fn new_pos(this_axis: f32, other_axis: f32) -> UIPos {
+        UIPos::new(other_axis, this_axis)
+    }
+
+    fn new_size(this_axis: f32, other_axis: f32) -> UISize {
+        UISize::new(other_axis, this_axis)
+    }
+
+    fn calc_align_offset(alignment: Self::MainAlignment, container_size: f32, size: f32) -> f32 {
+        alignment.calc_y_offset(container_size, size)
+    }
+}
+
+#[derive(Default)]
+pub struct Padding {
+    top: f32,
+    bottom: f32,
+    left: f32,
+    right: f32,
+}
+
+impl Padding {
+    fn remove_padding(&self, size: UISize) -> UISize {
+        let width = 0.0f32.max(size.width - self.left - self.right);
+        let height = 0.0f32.max(size.height - self.top - self.bottom);
+        UISize::new(width, height)
+    }
+
+    pub fn apply_to_constraints(
+        &self,
+        constraints: &UISizeConstraint,
+    ) -> (UISizeConstraint, UIPos) {
+        (
+            UISizeConstraint {
+                min: self.remove_padding(constraints.min),
+                max: self.remove_padding(constraints.max),
+            },
+            UIPos::new(self.left, self.top),
+        )
+    }
+}

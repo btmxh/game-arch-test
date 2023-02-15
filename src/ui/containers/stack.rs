@@ -4,7 +4,7 @@ use crate::{
     ui::{
         acquire_widget_id,
         utils::geom::{UIPos, UIRect, UISize},
-        Alignment, UISizeConstraint, Widget, WidgetId,
+        Alignment, Padding, UISizeConstraint, Widget, WidgetId,
     },
     utils::mutex::{Mutex, MutexGuard},
 };
@@ -22,6 +22,7 @@ pub struct Stack {
     hover_children: Mutex<Vec<Arc<dyn Widget>>>,
     bounds: Mutex<UIRect>,
     id: WidgetId,
+    padding: Mutex<Padding>,
 }
 
 fn map_child(child: &StackChild) -> Arc<dyn Widget> {
@@ -65,6 +66,8 @@ impl ContainerWidget for Stack {
     }
 
     fn layout_container(&self, size_constraints: &UISizeConstraint) -> UISize {
+        let (size_constraints, pos_offset) =
+            self.padding.lock().apply_to_constraints(size_constraints);
         let mut container_size = size_constraints.min;
         let child_size_constraints = UISizeConstraint {
             min: UISize::ZERO,
@@ -90,10 +93,12 @@ impl ContainerWidget for Stack {
         {
             let x = alignment
                 .horizontal
-                .calc_x_offset(container_size.width, size.width);
+                .calc_x_offset(container_size.width, size.width)
+                + pos_offset.x;
             let y = alignment
                 .vertical
-                .calc_y_offset(container_size.height, size.height);
+                .calc_y_offset(container_size.height, size.height)
+                + pos_offset.y;
             widget.set_position(UIPos::new(x, y));
         }
 
@@ -108,6 +113,7 @@ impl Stack {
             children: Mutex::new(Vec::new()),
             bounds: Mutex::new(UIRect::ZERO),
             hover_children: Mutex::new(Vec::new()),
+            padding: Mutex::new(Padding::default()),
         }
     }
 

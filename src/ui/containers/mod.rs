@@ -10,7 +10,7 @@ use super::{
     EventContext, UISizeConstraint, Widget, WidgetId,
 };
 
-pub mod offbox;
+pub mod linear_box;
 pub mod stack;
 
 bitflags! {

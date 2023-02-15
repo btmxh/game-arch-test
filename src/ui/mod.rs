@@ -93,14 +93,14 @@ impl Alignment {
 pub enum HorizontalAlignment {
     Left,
     Right,
-    Middle,
+    Center,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum VerticalAlignment {
     Top,
     Bottom,
-    Center,
+    Middle,
 }
 
 impl HorizontalAlignment {
@@ -108,7 +108,7 @@ impl HorizontalAlignment {
         match self {
             HorizontalAlignment::Left => 0.0,
             HorizontalAlignment::Right => container_width - width,
-            HorizontalAlignment::Middle => (container_width - width) * 0.5,
+            HorizontalAlignment::Center => (container_width - width) * 0.5,
         }
     }
 }
@@ -118,7 +118,7 @@ impl VerticalAlignment {
         match self {
             VerticalAlignment::Top => 0.0,
             VerticalAlignment::Bottom => container_height - height,
-            VerticalAlignment::Center => (container_height - height) * 0.5,
+            VerticalAlignment::Middle => (container_height - height) * 0.5,
         }
     }
 }

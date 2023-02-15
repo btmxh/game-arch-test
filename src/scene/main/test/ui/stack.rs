@@ -36,7 +36,7 @@ mod layout_tests {
     ) {
         let node = node.new_child_parent("layout");
         do_test(&node, "single_child_center_middle", [
-            (100.0, 200.0, HorizontalAlignment::Middle, VerticalAlignment::Center),
+            (100.0, 200.0, HorizontalAlignment::Center, VerticalAlignment::Middle),
         ], [
             (50.0, 50.0, 50.0, 50.0, [(0.0, 0.0, 50.0, 50.0)]),
             (100.0, 100.0, 100.0, 100.0, [(0.0, 0.0, 100.0, 100.0)]),
@@ -67,7 +67,7 @@ mod layout_tests {
 
         do_test(&node, "lazy_child", [
             // setitng pref_size to 0x0 is equivalent to always picking the minimum size
-            (0.0, 0.0, HorizontalAlignment::Middle, VerticalAlignment::Center),
+            (0.0, 0.0, HorizontalAlignment::Center, VerticalAlignment::Middle),
             (0.0, 0.0, HorizontalAlignment::Left, VerticalAlignment::Top),
             (0.0, 0.0, HorizontalAlignment::Right, VerticalAlignment::Bottom),
         ], [
@@ -87,7 +87,7 @@ mod layout_tests {
         do_test(&node, "greedy_child", [
             // f32::INFINITY is mouthful, we will just use 1e9 instead
             // setitng pref_size to INF is equivalent to always picking the maximum size
-            (1e9, 1e9, HorizontalAlignment::Middle, VerticalAlignment::Center),
+            (1e9, 1e9, HorizontalAlignment::Center, VerticalAlignment::Middle),
             (1e9, 1e9, HorizontalAlignment::Left, VerticalAlignment::Top),
             (1e9, 1e9, HorizontalAlignment::Right, VerticalAlignment::Bottom),
         ], [
@@ -266,7 +266,7 @@ mod draw_tests {
             );
             stack.push_arc(
                 widget.clone(),
-                Alignment::new(HorizontalAlignment::Middle, VerticalAlignment::Center),
+                Alignment::new(HorizontalAlignment::Center, VerticalAlignment::Middle),
             );
         }
 
@@ -322,8 +322,8 @@ mod propagating_tests {
             &node,
             "simple",
             [
-                (300.0, 300.0, HorizontalAlignment::Middle, VerticalAlignment::Center, false),
-                (500.0, 500.0, HorizontalAlignment::Middle, VerticalAlignment::Center, true),
+                (300.0, 300.0, HorizontalAlignment::Center, VerticalAlignment::Middle, false),
+                (500.0, 500.0, HorizontalAlignment::Center, VerticalAlignment::Middle, true),
             ],
             Some("propagating - 1"),
             [
@@ -449,8 +449,8 @@ mod cursor_tests {
             &node,
             "simple",
             [
-                (300.0, 300.0, HorizontalAlignment::Middle, VerticalAlignment::Center, false),
-                (500.0, 500.0, HorizontalAlignment::Middle, VerticalAlignment::Center, false),
+                (300.0, 300.0, HorizontalAlignment::Center, VerticalAlignment::Middle, false),
+                (500.0, 500.0, HorizontalAlignment::Center, VerticalAlignment::Middle, false),
             ],
             [
                 (

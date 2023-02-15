@@ -38,7 +38,7 @@ mod layout_tests {
             "simple_y",
             [
                 (200.0, 300.0, HorizontalAlignment::Left),
-                (300.0, 400.0, HorizontalAlignment::Middle),
+                (300.0, 400.0, HorizontalAlignment::Center),
                 (400.0, 100.0, HorizontalAlignment::Right),
             ],
             [

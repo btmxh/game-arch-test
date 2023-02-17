@@ -50,6 +50,8 @@ pub trait Widget: Send + Sync {
         Some(event)
     }
 
+    fn focus_changed(&self, _ctx: &mut EventContext, _new_focus: bool) {}
+
     fn draw(&self, _ctx: &mut DrawContext) {}
 
     fn layout(&self, size_constraints: &UISizeConstraint) -> UISize;

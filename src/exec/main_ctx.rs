@@ -18,6 +18,7 @@ use crate::{
     graphics::{context::DrawContext, wrappers::vertex_array::VertexArrayHandle},
     scene::main::RootScene,
     test::TestManager,
+    ui::{EventContext, Widget},
     utils::{args::args, error::ResultExt},
 };
 
@@ -29,6 +30,7 @@ use super::{
 };
 
 pub struct MainContext {
+    pub focused_widget: Option<Arc<dyn Widget>>,
     pub test_logs: HashMap<Cow<'static, str>, String>,
     pub test_manager: Option<Arc<TestManager>>,
     pub executor: GameServerExecutor,
@@ -59,6 +61,7 @@ impl MainContext {
             dispatch_list: DispatchList::new(),
             channels,
             test_logs: HashMap::new(),
+            focused_widget: None,
         };
 
         if let Some(test_manager) = slf.test_manager.as_ref() {
@@ -71,6 +74,24 @@ impl MainContext {
         }
 
         Ok(slf)
+    }
+
+    pub fn set_focus_widget(&mut self, new_widget: Option<Arc<dyn Widget>>) {
+        if self.focused_widget.as_ref().map(|w| w.id()) == new_widget.as_ref().map(|w| w.id()) {
+            return;
+        }
+
+        if let Some(widget) = self.focused_widget.take() {
+            widget.focus_changed(&mut EventContext { main_ctx: self }, false);
+        }
+
+        self.focused_widget = new_widget;
+
+        if let Some(widget) = self.focused_widget.as_ref() {
+            widget
+                .clone()
+                .focus_changed(&mut EventContext { main_ctx: self }, true);
+        }
     }
 
     pub fn get_test_log(&mut self, name: &str) -> &mut String {

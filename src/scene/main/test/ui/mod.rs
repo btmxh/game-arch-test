@@ -38,8 +38,11 @@ pub struct GenericTestWidget<T: Send + Sync> {
     pub layout_callback:
         Box<dyn Fn(&GenericTestWidget<T>, &UISizeConstraint) -> UISize + Send + Sync>,
     pub draw_callback: Box<dyn Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync>,
-    pub handle_focus_event_callback:
-        Box<dyn Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) + Send + Sync>,
+    pub handle_focus_event_callback: Box<
+        dyn Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
+            + Send
+            + Sync,
+    >,
     pub handle_cursor_event_callback: Box<
         dyn Fn(&GenericTestWidget<T>, &mut EventContext, UICursorEvent) -> Option<UICursorEvent>
             + Send
@@ -64,8 +67,13 @@ pub struct GenericTestWidgetBuilder<T: Send + Sync> {
     layout_callback:
         Option<Box<dyn Fn(&GenericTestWidget<T>, &UISizeConstraint) -> UISize + Send + Sync>>,
     draw_callback: Option<Box<dyn Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync>>,
-    handle_focus_event_callback:
-        Option<Box<dyn Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) + Send + Sync>>,
+    handle_focus_event_callback: Option<
+        Box<
+            dyn Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
+                + Send
+                + Sync,
+        >,
+    >,
     handle_cursor_event_callback: Option<
         Box<
             dyn Fn(&GenericTestWidget<T>, &mut EventContext, UICursorEvent) -> Option<UICursorEvent>
@@ -107,7 +115,11 @@ impl<T: Send + Sync> Widget for GenericTestWidget<T> {
         (self.draw_callback)(self, ctx)
     }
 
-    fn handle_focus_event(&self, ctx: &mut EventContext, event: UIFocusEvent) {
+    fn handle_focus_event(
+        &self,
+        ctx: &mut EventContext,
+        event: UIFocusEvent,
+    ) -> Option<UIFocusEvent> {
         (self.handle_focus_event_callback)(self, ctx, event)
     }
 
@@ -169,7 +181,10 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn handle_focus_event<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) + Send + Sync + 'static,
+        F: Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
+            + Send
+            + Sync
+            + 'static,
     {
         self.handle_focus_event_callback = Some(Box::new(callback));
         self
@@ -201,7 +216,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
             draw_callback: self.draw_callback.unwrap_or_else(|| Box::new(|_, _| {})),
             handle_focus_event_callback: self
                 .handle_focus_event_callback
-                .unwrap_or_else(|| Box::new(|_, _, _| {})),
+                .unwrap_or_else(|| Box::new(|_, _, e| Some(e))),
             handle_cursor_event_callback: self
                 .handle_cursor_event_callback
                 .unwrap_or_else(|| Box::new(|_, _, e| Some(e))),
@@ -287,6 +302,8 @@ impl TestWidgetBuilder {
                 }
                 log.push_str(slf.test_id.to_string().as_str());
                 log.push('\n');
+
+                Some(event)
             }))
             .handle_cursor_event(enclose!((test_log_name) move |slf, ctx, event| {
                 let log = ctx.main_ctx.get_test_log(&test_log_name);

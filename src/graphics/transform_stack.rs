@@ -36,10 +36,14 @@ impl TransformStack {
     }
 
     pub fn translate(&mut self, offset: UIPos) {
-        self.peek_mut().translation += Vec2::new(offset.x, offset.y);
+        self.peek_mut().translation += Vec2::from(offset);
     }
 
     pub fn clear(&mut self) {
         self.0.clear()
+    }
+
+    pub fn reset_current_transform(&mut self) {
+        *self.peek_mut() = Affine2::IDENTITY;
     }
 }

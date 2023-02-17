@@ -34,7 +34,13 @@ pub trait Widget: Send + Sync {
         Some(event)
     }
 
-    fn handle_focus_event(&self, _ctx: &mut EventContext, _event: UIFocusEvent) {}
+    fn handle_focus_event(
+        &self,
+        _ctx: &mut EventContext,
+        event: UIFocusEvent,
+    ) -> Option<UIFocusEvent> {
+        Some(event)
+    }
 
     fn handle_cursor_event(
         &self,

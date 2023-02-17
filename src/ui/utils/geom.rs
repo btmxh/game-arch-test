@@ -1,5 +1,5 @@
 use glam::Vec2;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalPosition, LogicalSize};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UIPos {
@@ -18,6 +18,18 @@ impl UIPos {
 
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
+    }
+}
+
+impl From<LogicalPosition<f32>> for UIPos {
+    fn from(v: LogicalPosition<f32>) -> Self {
+        Self::new(v.x, v.y)
+    }
+}
+
+impl From<UIPos> for LogicalPosition<f32> {
+    fn from(pos: UIPos) -> Self {
+        Self::new(pos.x, pos.y)
     }
 }
 

@@ -38,7 +38,13 @@ pub trait ContainerWidget: Widget {
 
     fn hover_widgets(&self) -> MutexGuard<'_, Vec<Arc<dyn Widget>>>;
 
-    fn handle_focus_event_impl(&self, _ctx: &mut EventContext, _event: UIFocusEvent) {}
+    fn handle_focus_event_impl(
+        &self,
+        _ctx: &mut EventContext,
+        event: UIFocusEvent,
+    ) -> Option<UIFocusEvent> {
+        Some(event)
+    }
 
     fn handle_propagating_event_impl(
         &self,
@@ -74,7 +80,11 @@ impl<T: ContainerWidget> Widget for T {
         self.get_container_bounds()
     }
 
-    fn handle_focus_event(&self, ctx: &mut EventContext, event: UIFocusEvent) {
+    fn handle_focus_event(
+        &self,
+        ctx: &mut EventContext,
+        event: UIFocusEvent,
+    ) -> Option<UIFocusEvent> {
         self.handle_focus_event_impl(ctx, event)
     }
 

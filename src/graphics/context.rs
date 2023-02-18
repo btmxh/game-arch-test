@@ -153,13 +153,13 @@ impl DrawContext {
 
     fn process_messages(
         &mut self,
-        single: bool,
+        block: bool,
         root_scene: &mut Option<RootScene>,
     ) -> anyhow::Result<()> {
         let messages = self
             .base
             .receiver
-            .try_iter(single.then_some(Duration::from_millis(300)))
+            .try_iter(block.then_some(Duration::from_millis(300)))
             .context("thread runner channel was unexpectedly closed")?
             .collect::<Vec<_>>();
         for message in messages {
@@ -224,9 +224,10 @@ impl DrawContext {
         single: bool,
         runner_frequency: f64,
     ) -> anyhow::Result<()> {
+        let headless = args().headless;
         self.base.run("Draw", runner_frequency);
-        self.process_messages(single, root_scene)?;
-        if !args().headless {
+        self.process_messages(single && headless, root_scene)?;
+        if !headless {
             if let Some(root_scene) = root_scene {
                 root_scene.draw(self);
             }

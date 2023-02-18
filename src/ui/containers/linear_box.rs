@@ -3,8 +3,8 @@ use std::{iter::Map, sync::Arc};
 use crate::{
     ui::{
         acquire_widget_id,
-        utils::geom::{UIPos, UIRect, UISize},
-        Axis, Padding, UISizeConstraint, Widget, WidgetId,
+        utils::geom::{UIRect, UISize},
+        Axis, Padding, UISizeConstraint, Visibility, Widget, WidgetId,
     },
     utils::mutex::{Mutex, MutexGuard},
 };
@@ -24,6 +24,7 @@ pub struct LinearBox<A: Axis> {
     bounds: Mutex<UIRect>,
     spacing: Mutex<f32>,
     padding: Mutex<Padding>,
+    visibility: Mutex<Visibility>,
 }
 
 impl<A: Axis> LinearBox<A> {
@@ -35,6 +36,7 @@ impl<A: Axis> LinearBox<A> {
             bounds: Mutex::new(UIRect::ZERO),
             spacing: Mutex::new(4.0),
             padding: Mutex::new(Padding::default()),
+            visibility: Mutex::new(Visibility::Visible),
         }
     }
 
@@ -99,15 +101,15 @@ impl<A: Axis> ContainerWidget for LinearBox<A> {
             child_pos.x += pos_offset.x;
             child_pos.y += pos_offset.y;
 
-            child.widget.set_position(child_pos);
+            child.widget.set_bounds(UIRect::new(child_pos, child.size));
             main_pos += A::get_size(child.size) + spacing;
         }
 
         A::new_size(main_size, cross_size)
     }
 
-    fn set_container_position(&self, position: UIPos) {
-        self.bounds.lock().pos = position;
+    fn set_container_bounds(&self, bounds: UIRect) {
+        *self.bounds.lock() = bounds;
     }
 
     fn get_container_bounds(&self) -> UIRect {
@@ -140,5 +142,13 @@ impl<A: Axis> ContainerWidget for LinearBox<A> {
 
     fn hover_widgets(&self) -> MutexGuard<'_, Vec<Arc<dyn Widget>>> {
         self.hover.lock()
+    }
+
+    fn get_visibility(&self) -> Visibility {
+        *self.visibility.lock()
+    }
+
+    fn set_visibility(&self, visibility: Visibility) {
+        *self.visibility.lock() = visibility;
     }
 }

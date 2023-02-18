@@ -370,7 +370,9 @@ mod propagating_tests {
         }
 
         stack.layout(&UISizeConstraint::exact(UISize::new(1000.0, 1000.0)));
-        stack.handle_cursor_event(&mut ctx, UICursorEvent::CursorEntered);
+        stack
+            .clone()
+            .handle_cursor_event(&mut ctx, UICursorEvent::CursorEntered);
 
         node.update(test_body(
             &mut ctx,
@@ -395,7 +397,9 @@ mod propagating_tests {
         >,
     ) -> TestResult {
         if let Some(non_hover_output) = non_hover_output {
-            stack.handle_propagating_event(ctx, UIPropagatingEvent::ThemeChanged(Theme::Dark));
+            stack
+                .clone()
+                .handle_propagating_event(ctx, UIPropagatingEvent::ThemeChanged(Theme::Dark));
             let log = ctx.main_ctx.pop_test_log(name);
             assert_equals(
                 log.trim(),
@@ -405,8 +409,12 @@ mod propagating_tests {
         }
 
         for (i, (x, y, expected_log)) in hover_output.into_iter().enumerate() {
-            stack.handle_cursor_event(ctx, UICursorEvent::CursorMoved(UIPos::new(x, y)));
-            stack.handle_propagating_event(ctx, UIPropagatingEvent::TestHover);
+            stack
+                .clone()
+                .handle_cursor_event(ctx, UICursorEvent::CursorMoved(UIPos::new(x, y)));
+            stack
+                .clone()
+                .handle_propagating_event(ctx, UIPropagatingEvent::TestHover);
 
             let log = ctx.main_ctx.pop_test_log(name);
             assert_equals(
@@ -416,8 +424,12 @@ mod propagating_tests {
             )?;
 
             // reset state
-            stack.handle_cursor_event(ctx, UICursorEvent::CursorExited);
-            stack.handle_cursor_event(ctx, UICursorEvent::CursorEntered);
+            stack
+                .clone()
+                .handle_cursor_event(ctx, UICursorEvent::CursorExited);
+            stack
+                .clone()
+                .handle_cursor_event(ctx, UICursorEvent::CursorEntered);
             ctx.main_ctx.pop_test_log(name);
         }
 
@@ -531,11 +543,17 @@ cursor - 1",
         >,
     ) -> TestResult {
         for (i, (cursor_path, expected_log)) in test_cases.into_iter().enumerate() {
-            stack.handle_cursor_event(ctx, UICursorEvent::CursorEntered);
+            stack
+                .clone()
+                .handle_cursor_event(ctx, UICursorEvent::CursorEntered);
             for (x, y) in cursor_path {
-                stack.handle_cursor_event(ctx, UICursorEvent::CursorMoved(UIPos::new(*x, *y)));
+                stack
+                    .clone()
+                    .handle_cursor_event(ctx, UICursorEvent::CursorMoved(UIPos::new(*x, *y)));
             }
-            stack.handle_cursor_event(ctx, UICursorEvent::CursorExited);
+            stack
+                .clone()
+                .handle_cursor_event(ctx, UICursorEvent::CursorExited);
 
             let log = ctx.main_ctx.pop_test_log(name);
             assert_equals(

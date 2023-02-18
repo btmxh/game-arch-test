@@ -31,6 +31,7 @@ use super::{
 
 pub struct MainContext {
     pub focused_widget: Option<Arc<dyn Widget>>,
+    pub prev_focused_widget: Option<Arc<dyn Widget>>,
     pub test_logs: HashMap<Cow<'static, str>, String>,
     pub test_manager: Option<Arc<TestManager>>,
     pub executor: GameServerExecutor,
@@ -61,6 +62,7 @@ impl MainContext {
             dispatch_list: DispatchList::new(),
             channels,
             test_logs: HashMap::new(),
+            prev_focused_widget: None,
             focused_widget: None,
         };
 
@@ -77,20 +79,24 @@ impl MainContext {
     }
 
     pub fn set_focus_widget(&mut self, new_widget: Option<Arc<dyn Widget>>) {
-        if self.focused_widget.as_ref().map(|w| w.id()) == new_widget.as_ref().map(|w| w.id()) {
+        if self.focused_widget.is_some() {
+            tracing::warn!("two widgets tried to be focused in one mouse press event");
             return;
         }
 
-        if let Some(widget) = self.focused_widget.take() {
+        self.focused_widget = new_widget;
+        if self.prev_focused_widget.as_ref().map(|w| w.id())
+            == self.focused_widget.as_ref().map(|w| w.id())
+        {
+            return;
+        }
+
+        if let Some(widget) = self.prev_focused_widget.take() {
             widget.focus_changed(&mut EventContext { main_ctx: self }, false);
         }
 
-        self.focused_widget = new_widget;
-
-        if let Some(widget) = self.focused_widget.as_ref() {
-            widget
-                .clone()
-                .focus_changed(&mut EventContext { main_ctx: self }, true);
+        if let Some(widget) = self.focused_widget.clone() {
+            widget.focus_changed(&mut EventContext { main_ctx: self }, true);
         }
     }
 

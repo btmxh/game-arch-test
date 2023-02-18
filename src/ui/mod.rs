@@ -1,4 +1,7 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use event::{UICursorEvent, UIFocusEvent, UIPropagatingEvent};
 use utils::geom::{UIPos, UIRect, UISize};
@@ -23,11 +26,28 @@ pub struct EventContext<'a> {
     ////  pub root_scene: &'a RootScene,
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Visibility {
+    PhyiscalHidden, // not handling events, not drawn on screen
+    LogicalHidden,  // not handling events, drawn on screen
+    Visible,        // handling events, drawn on screen
+}
+
+impl Visibility {
+    pub fn handle_event(&self) -> bool {
+        *self == Self::Visible
+    }
+
+    pub fn draw(&self) -> bool {
+        *self != Self::PhyiscalHidden
+    }
+}
+
 pub trait Widget: Send + Sync {
     fn id(&self) -> WidgetId;
 
     fn handle_propagating_event(
-        &self,
+        self: Arc<Self>,
         _ctx: &mut EventContext,
         event: UIPropagatingEvent,
     ) -> Option<UIPropagatingEvent> {
@@ -35,7 +55,7 @@ pub trait Widget: Send + Sync {
     }
 
     fn handle_focus_event(
-        &self,
+        self: Arc<Self>,
         _ctx: &mut EventContext,
         event: UIFocusEvent,
     ) -> Option<UIFocusEvent> {
@@ -43,7 +63,7 @@ pub trait Widget: Send + Sync {
     }
 
     fn handle_cursor_event(
-        &self,
+        self: Arc<Self>,
         _ctx: &mut EventContext,
         event: UICursorEvent,
     ) -> Option<UICursorEvent> {
@@ -55,7 +75,7 @@ pub trait Widget: Send + Sync {
     fn draw(&self, _ctx: &mut DrawContext) {}
 
     fn layout(&self, size_constraints: &UISizeConstraint) -> UISize;
-    fn set_position(&self, position: UIPos);
+    fn set_bounds(&self, bounds: UIRect);
     fn get_bounds(&self) -> UIRect;
 }
 

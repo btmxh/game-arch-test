@@ -39,18 +39,22 @@ pub struct GenericTestWidget<T: Send + Sync> {
         Box<dyn Fn(&GenericTestWidget<T>, &UISizeConstraint) -> UISize + Send + Sync>,
     pub draw_callback: Box<dyn Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync>,
     pub handle_focus_event_callback: Box<
-        dyn Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
+        dyn Fn(&Arc<GenericTestWidget<T>>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
             + Send
             + Sync,
     >,
     pub handle_cursor_event_callback: Box<
-        dyn Fn(&GenericTestWidget<T>, &mut EventContext, UICursorEvent) -> Option<UICursorEvent>
+        dyn Fn(
+                &Arc<GenericTestWidget<T>>,
+                &mut EventContext,
+                UICursorEvent,
+            ) -> Option<UICursorEvent>
             + Send
             + Sync,
     >,
     pub handle_propagating_event_callback: Box<
         dyn Fn(
-                &GenericTestWidget<T>,
+                &Arc<GenericTestWidget<T>>,
                 &mut EventContext,
                 UIPropagatingEvent,
             ) -> Option<UIPropagatingEvent>
@@ -69,14 +73,22 @@ pub struct GenericTestWidgetBuilder<T: Send + Sync> {
     draw_callback: Option<Box<dyn Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync>>,
     handle_focus_event_callback: Option<
         Box<
-            dyn Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
+            dyn Fn(
+                    &Arc<GenericTestWidget<T>>,
+                    &mut EventContext,
+                    UIFocusEvent,
+                ) -> Option<UIFocusEvent>
                 + Send
                 + Sync,
         >,
     >,
     handle_cursor_event_callback: Option<
         Box<
-            dyn Fn(&GenericTestWidget<T>, &mut EventContext, UICursorEvent) -> Option<UICursorEvent>
+            dyn Fn(
+                    &Arc<GenericTestWidget<T>>,
+                    &mut EventContext,
+                    UICursorEvent,
+                ) -> Option<UICursorEvent>
                 + Send
                 + Sync,
         >,
@@ -84,7 +96,7 @@ pub struct GenericTestWidgetBuilder<T: Send + Sync> {
     handle_propagating_event_callback: Option<
         Box<
             dyn Fn(
-                    &GenericTestWidget<T>,
+                    &Arc<GenericTestWidget<T>>,
                     &mut EventContext,
                     UIPropagatingEvent,
                 ) -> Option<UIPropagatingEvent>
@@ -103,8 +115,8 @@ impl<T: Send + Sync> Widget for GenericTestWidget<T> {
         (self.layout_callback)(self, size_constraints)
     }
 
-    fn set_position(&self, position: crate::ui::utils::geom::UIPos) {
-        self.bounds.lock().pos = position;
+    fn set_bounds(&self, bounds: UIRect) {
+        *self.bounds.lock() = bounds;
     }
 
     fn get_bounds(&self) -> UIRect {
@@ -116,27 +128,27 @@ impl<T: Send + Sync> Widget for GenericTestWidget<T> {
     }
 
     fn handle_focus_event(
-        &self,
+        self: Arc<Self>,
         ctx: &mut EventContext,
         event: UIFocusEvent,
     ) -> Option<UIFocusEvent> {
-        (self.handle_focus_event_callback)(self, ctx, event)
+        (self.handle_focus_event_callback)(&self, ctx, event)
     }
 
     fn handle_cursor_event(
-        &self,
+        self: Arc<Self>,
         ctx: &mut EventContext,
         event: UICursorEvent,
     ) -> Option<UICursorEvent> {
-        (self.handle_cursor_event_callback)(self, ctx, event)
+        (self.handle_cursor_event_callback)(&self, ctx, event)
     }
 
     fn handle_propagating_event(
-        &self,
+        self: Arc<Self>,
         ctx: &mut EventContext,
         event: UIPropagatingEvent,
     ) -> Option<UIPropagatingEvent> {
-        (self.handle_propagating_event_callback)(self, ctx, event)
+        (self.handle_propagating_event_callback)(&self, ctx, event)
     }
 }
 
@@ -156,7 +168,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
     pub fn handle_propagating_event<F>(mut self, callback: F) -> Self
     where
         F: Fn(
-                &GenericTestWidget<T>,
+                &Arc<GenericTestWidget<T>>,
                 &mut EventContext,
                 UIPropagatingEvent,
             ) -> Option<UIPropagatingEvent>
@@ -170,7 +182,11 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn handle_cursor_event<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&GenericTestWidget<T>, &mut EventContext, UICursorEvent) -> Option<UICursorEvent>
+        F: Fn(
+                &Arc<GenericTestWidget<T>>,
+                &mut EventContext,
+                UICursorEvent,
+            ) -> Option<UICursorEvent>
             + Send
             + Sync
             + 'static,
@@ -181,7 +197,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn handle_focus_event<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&GenericTestWidget<T>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
+        F: Fn(&Arc<GenericTestWidget<T>>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
             + Send
             + Sync
             + 'static,

@@ -4,7 +4,7 @@ use crate::{
     ui::{
         acquire_widget_id,
         utils::geom::{UIPos, UIRect, UISize},
-        Alignment, Padding, UISizeConstraint, Widget, WidgetId,
+        Alignment, Padding, UISizeConstraint, Visibility, Widget, WidgetId,
     },
     utils::mutex::{Mutex, MutexGuard},
 };
@@ -23,6 +23,7 @@ pub struct Stack {
     bounds: Mutex<UIRect>,
     id: WidgetId,
     padding: Mutex<Padding>,
+    visibility: Mutex<Visibility>,
 }
 
 fn map_child(child: &StackChild) -> Arc<dyn Widget> {
@@ -34,8 +35,8 @@ impl ContainerWidget for Stack {
         self.id
     }
 
-    fn set_container_position(&self, position: UIPos) {
-        self.bounds.lock().pos = position;
+    fn set_container_bounds(&self, bounds: UIRect) {
+        *self.bounds.lock() = bounds;
     }
 
     fn get_container_bounds(&self) -> UIRect {
@@ -78,6 +79,7 @@ impl ContainerWidget for Stack {
 
         for StackChild { widget, size, .. } in children.iter_mut() {
             *size = widget.layout(&child_size_constraints);
+            // special case: size.width
             debug_assert!(child_size_constraints.test(size));
             container_size.width = container_size.width.max(size.width);
             container_size.height = container_size.height.max(size.height);
@@ -91,6 +93,14 @@ impl ContainerWidget for Stack {
             alignment,
         } in children.iter_mut()
         {
+            if size.width == UISize::FIT_CONTAINER {
+                size.width = container_size.width;
+            }
+
+            if size.height == UISize::FIT_CONTAINER {
+                size.height = container_size.height;
+            }
+
             let x = alignment
                 .horizontal
                 .calc_x_offset(container_size.width, size.width)
@@ -99,10 +109,18 @@ impl ContainerWidget for Stack {
                 .vertical
                 .calc_y_offset(container_size.height, size.height)
                 + pos_offset.y;
-            widget.set_position(UIPos::new(x, y));
+            widget.set_bounds(UIRect::new(UIPos::new(x, y), *size));
         }
 
         container_size
+    }
+
+    fn get_visibility(&self) -> Visibility {
+        *self.visibility.lock()
+    }
+
+    fn set_visibility(&self, visibility: Visibility) {
+        *self.visibility.lock() = visibility;
     }
 }
 
@@ -114,6 +132,7 @@ impl Stack {
             bounds: Mutex::new(UIRect::ZERO),
             hover_children: Mutex::new(Vec::new()),
             padding: Mutex::new(Padding::default()),
+            visibility: Mutex::new(Visibility::Visible),
         }
     }
 

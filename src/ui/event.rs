@@ -5,7 +5,7 @@ use winit::{
     window::Theme,
 };
 
-use super::utils::geom::UIPos;
+use super::{utils::geom::UIPos, Visibility};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DragDropAction {
@@ -35,12 +35,14 @@ pub enum UIPropagatingEvent {
         state: ElementState,
         button: MouseButton,
     },
+    VisibilityChanged(Visibility),
     TestHover,
 }
 
 impl UIPropagatingEvent {
     pub fn only_propagate_hover(&self) -> bool {
         !matches!(self, UIPropagatingEvent::ThemeChanged(_))
+            && !matches!(self, UIPropagatingEvent::VisibilityChanged(_))
     }
 }
 

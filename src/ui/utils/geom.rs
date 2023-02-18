@@ -48,6 +48,13 @@ impl From<UIPos> for Vec2 {
 impl UISize {
     pub const ZERO: UISize = Self::new(0.0, 0.0);
 
+    /// return an UISize with width/height set to `FIT_CONTAINER` in the
+    /// layout function to request the container to fit the content size
+    /// (container size minus padding) to the widget.
+    /// `Stack` supports `FIT_CONTAINER` in both axis, but only the cross
+    /// axis is available in `LinearBox`-es
+    pub const FIT_CONTAINER: f32 = f32::NEG_INFINITY;
+
     pub const fn new(width: f32, height: f32) -> Self {
         Self { width, height }
     }

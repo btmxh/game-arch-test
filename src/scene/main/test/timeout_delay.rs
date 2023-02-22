@@ -8,7 +8,6 @@ use anyhow::Context;
 
 use crate::{
     exec::main_ctx::MainContext,
-    scene::SceneContainer,
     test::{
         assert::{assert_greater_equals, assert_less_equals},
         result::TestResult,
@@ -18,10 +17,7 @@ use crate::{
 
 const MAX_DELAY: Duration = Duration::from_millis(100);
 
-pub fn new(
-    main_ctx: &mut MainContext,
-    node: &Arc<ParentTestNode>,
-) -> anyhow::Result<SceneContainer> {
+pub fn test(main_ctx: &mut MainContext, node: &Arc<ParentTestNode>) -> anyhow::Result<()> {
     let node = node.new_child_parent("set_timeout_delay");
 
     let mut test = |timeout: Duration, name: &'static str| -> anyhow::Result<()> {
@@ -50,5 +46,5 @@ pub fn new(
     test(Duration::from_secs(3), "3s")?;
     test(Duration::from_secs(5), "5s")?;
     test(Duration::from_secs(10), "10s")?;
-    Ok(SceneContainer::new())
+    Ok(())
 }

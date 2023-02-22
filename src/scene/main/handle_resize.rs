@@ -42,8 +42,7 @@ impl Scene for HandleResize {
                 let width = NonZeroU32::new(size.width);
                 let height = NonZeroU32::new(size.height);
                 let ui_size = size.to_logical(main_ctx.display.get_scale_factor()).into();
-                let size =
-                    width.and_then(|width| height.map(|height| PhysicalSize::new(width, height)));
+                let size = width.zip(height).map(|(w, h)| PhysicalSize::new(w, h));
                 if let Some(size) = size {
                     if args().throttle_resize {
                         let mut state = self.state.lock();

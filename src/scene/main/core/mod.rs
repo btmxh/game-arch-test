@@ -1,11 +1,9 @@
 use crate::{exec::main_ctx::MainContext, scene::SceneContainer};
 
-use self::redraw::Redraw;
-
 pub mod redraw;
 
 pub fn new(_: &mut MainContext) -> anyhow::Result<SceneContainer> {
     let mut container = SceneContainer::new();
-    container.push(Redraw);
+    container.push_event_handler(redraw::handle_event);
     Ok(container)
 }

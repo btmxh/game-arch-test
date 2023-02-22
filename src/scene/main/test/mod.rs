@@ -16,11 +16,10 @@ pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<SceneContainer> {
         .expect("TestManager must exist in test mode")
         .root
         .clone();
-    container.push_all(
-        timeout_delay::new(main_ctx, node).context("unable to create TimeoutDelay scene")?,
-    );
-    container.push_all(Headless::new(main_ctx, node).context("unable to create Headless scene")?);
-    container.push_all(ui::new(main_ctx, node).context("unable to create UI scene")?);
+    timeout_delay::test(main_ctx, node).context("unable to initiate TimeoutDelay tests")?;
+    container
+        .push_all(Headless::new(main_ctx, node).context("unable to create Headless test scene")?);
+    container.push_all(ui::new(main_ctx, node).context("unable to create UI test scene")?);
     main_ctx
         .test_manager
         .as_ref()

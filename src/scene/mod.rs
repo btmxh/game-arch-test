@@ -24,6 +24,42 @@ impl SceneContainer {
         self.scenes.push(scene)
     }
 
+    pub fn push_event_handler<F>(&mut self, event_handler: F)
+    where
+        F: Fn(&mut MainContext, &RootScene, GameEvent<'static>) -> Option<GameEvent<'static>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        struct EventHandlerScene<F> {
+            event_handler: F,
+        }
+
+        impl<F> Scene for EventHandlerScene<F>
+        where
+            F: Fn(&mut MainContext, &RootScene, GameEvent<'static>) -> Option<GameEvent<'static>>
+                + Send
+                + Sync
+                + 'static,
+        {
+            fn handle_event<'a>(
+                self: Arc<Self>,
+                ctx: &mut MainContext,
+                root_scene: &RootScene,
+                event: GameEvent<'a>,
+            ) -> Option<GameEvent<'a>> {
+                if let Some(event) = event.to_static() {
+                    (self.event_handler)(ctx, root_scene, event)
+                } else {
+                    None
+                }
+            }
+        }
+
+        let scene = EventHandlerScene { event_handler };
+        self.push(scene);
+    }
+
     pub fn push_all(&mut self, mut container: SceneContainer) {
         self.scenes.append(&mut container.scenes);
     }

@@ -1,54 +1,40 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use winit::event::Event;
 
 use crate::{
     events::GameEvent,
     exec::main_ctx::MainContext,
-    scene::{main::RootScene, Scene},
+    scene::main::RootScene,
     utils::{args::args, error::ResultExt},
 };
 
-pub struct Redraw;
-
-impl Scene for Redraw {
-    fn handle_event<'a>(
-        self: Arc<Self>,
-        ctx: &mut MainContext,
-        _: &RootScene,
-        event: GameEvent<'a>,
-    ) -> Option<GameEvent<'a>> {
-        match event {
-            Event::RedrawRequested(window_id) if ctx.display.get_window_id() == window_id => {
-                Self::redraw(ctx)
-                    .context("unable to send redraw request")
-                    .log_warn();
-                None
+pub fn handle_event<'a>(
+    ctx: &mut MainContext,
+    _: &RootScene,
+    event: GameEvent<'a>,
+) -> Option<GameEvent<'a>> {
+    match event {
+        Event::RedrawRequested(window_id) if ctx.display.get_window_id() == window_id => {
+            if args().block_event_loop {
+                // somewhat hacky way of waiting a buffer swap
+                if ctx.executor.main_runner.base.container.draw.is_some() {
+                    ctx.executor
+                        .main_runner
+                        .base
+                        .run_single(true)
+                        .context("error executing main runner while redrawing")
+                        .log_warn();
+                } else {
+                    for _ in 0..2 {
+                        ctx.execute_draw_sync(|_, _| Ok(()))
+                            .context("unable to wait for redraw")
+                            .log_warn();
+                    }
+                }
             }
-
-            event => Some(event),
-        }
-    }
-}
-
-impl Redraw {
-    fn redraw(main_ctx: &mut MainContext) -> anyhow::Result<()> {
-        if args().block_event_loop {
-            // somewhat hacky way of waiting a buffer swap
-            if main_ctx.executor.main_runner.base.container.draw.is_some() {
-                main_ctx
-                    .executor
-                    .main_runner
-                    .base
-                    .run_single(true)
-                    .expect("error running main runner");
-            } else {
-                main_ctx.execute_draw_sync(|_, _| Ok(()))?;
-                main_ctx.execute_draw_sync(|_, _| Ok(()))?;
-            }
+            None
         }
 
-        Ok(())
+        event => Some(event),
     }
 }

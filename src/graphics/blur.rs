@@ -1,6 +1,6 @@
 use winit::dpi::PhysicalSize;
 
-use crate::exec::server::draw;
+use crate::exec::server::draw::{self, ServerSendChannelExt};
 
 use super::wrappers::{
     framebuffer::{DefaultTextureFramebuffer, Framebuffer, FramebufferHandle},

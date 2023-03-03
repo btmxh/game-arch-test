@@ -25,11 +25,11 @@ pub fn handle_event<'a>(
                         .context("error executing main runner while redrawing")
                         .log_warn();
                 } else {
-                    for _ in 0..2 {
-                        ctx.execute_draw_sync(|_, _| Ok(()))
-                            .context("unable to wait for redraw")
-                            .log_warn();
-                    }
+                    ctx.execute_draw_sync(|context, root_scene| {
+                        context.draw(root_scene, false, 0.0)
+                    })
+                    .context("error triggering redraw in draw server")
+                    .log_warn();
                 }
             }
             None

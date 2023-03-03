@@ -9,20 +9,23 @@ use winit::event_loop::EventLoopProxy;
 use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 use crate::{
     events::GameUserEvent,
-    exec::dispatch::{DispatchId, DispatchMsg},
-    utils::mpsc::{Receiver, Sender},
+    exec::dispatch::DispatchMsg,
+    utils::{
+        mpsc::{Receiver, Sender},
+        uid::Uid,
+    },
 };
 
 pub enum SendMsg {}
 pub enum RecvMsg {
     SetFrequencyProfiling(bool),
-    SetTimeout(Instant, DispatchId),
-    CancelTimeout(DispatchId),
+    SetTimeout(Instant, Uid),
+    CancelTimeout(Uid),
 }
 
 pub struct Server {
     pub base: BaseGameServer<SendMsg, RecvMsg>,
-    pub timeouts: HashMap<DispatchId, Instant>,
+    pub timeouts: HashMap<Uid, Instant>,
 }
 
 impl GameServer for Server {
@@ -102,12 +105,12 @@ impl GameServerSendChannel<RecvMsg> for ServerChannel {
 }
 
 impl ServerChannel {
-    pub fn set_timeout(&self, duration: Duration, id: DispatchId) -> anyhow::Result<()> {
+    pub fn set_timeout(&self, duration: Duration, id: Uid) -> anyhow::Result<()> {
         self.send(RecvMsg::SetTimeout(Instant::now() + duration, id))
             .context("unable to send timeout request")
     }
 
-    pub fn cancel_timeout(&self, id: DispatchId) -> anyhow::Result<()> {
+    pub fn cancel_timeout(&self, id: Uid) -> anyhow::Result<()> {
         self.send(RecvMsg::CancelTimeout(id))
             .context("unable to send cancel timeout request")
     }

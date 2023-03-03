@@ -1,5 +1,7 @@
 use std::{borrow::Cow, sync::Arc};
 
+use trait_set::trait_set;
+
 use crate::{
     enclose,
     exec::main_ctx::MainContext,
@@ -30,80 +32,41 @@ pub fn new(
 
 type TestWidgetId = usize;
 
+trait_set! {
+pub trait LayoutCallback<T> = Fn(&GenericTestWidget<T>, &UISizeConstraint) -> UISize + Send + Sync;
+pub trait DrawCallback<T> = Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync;
+pub trait HandleCursorEventCallback<T> = Fn(&Arc<GenericTestWidget<T>>, &mut EventContext, UICursorEvent) -> Option<UICursorEvent>
+    + Send
+    + Sync;
+pub trait HandleFocusEventCallback<T> = Fn(&Arc<GenericTestWidget<T>>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
+    + Send
+    + Sync;
+pub trait HandlePropagatingEventCallback<T> = Fn(&Arc<GenericTestWidget<T>>, &mut EventContext, UIPropagatingEvent) -> Option<UIPropagatingEvent>
+    + Send
+    + Sync;
+}
+
 #[allow(clippy::type_complexity)]
 pub struct GenericTestWidget<T: Send + Sync> {
     pub canonical_id: WidgetId,
     pub test_id: TestWidgetId,
     pub bounds: Mutex<UIRect>,
-    pub layout_callback:
-        Box<dyn Fn(&GenericTestWidget<T>, &UISizeConstraint) -> UISize + Send + Sync>,
-    pub draw_callback: Box<dyn Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync>,
-    pub handle_focus_event_callback: Box<
-        dyn Fn(&Arc<GenericTestWidget<T>>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
-            + Send
-            + Sync,
-    >,
-    pub handle_cursor_event_callback: Box<
-        dyn Fn(
-                &Arc<GenericTestWidget<T>>,
-                &mut EventContext,
-                UICursorEvent,
-            ) -> Option<UICursorEvent>
-            + Send
-            + Sync,
-    >,
-    pub handle_propagating_event_callback: Box<
-        dyn Fn(
-                &Arc<GenericTestWidget<T>>,
-                &mut EventContext,
-                UIPropagatingEvent,
-            ) -> Option<UIPropagatingEvent>
-            + Send
-            + Sync,
-    >,
+    pub layout_callback: Box<dyn LayoutCallback<T>>,
+    pub draw_callback: Box<dyn DrawCallback<T>>,
+    pub handle_focus_event_callback: Box<dyn HandleFocusEventCallback<T>>,
+    pub handle_cursor_event_callback: Box<dyn HandleCursorEventCallback<T>>,
+    pub handle_propagating_event_callback: Box<dyn HandlePropagatingEventCallback<T>>,
     pub data: T,
 }
 
-#[allow(clippy::type_complexity)]
 pub struct GenericTestWidgetBuilder<T: Send + Sync> {
     test_id: TestWidgetId,
     data: T,
-    layout_callback:
-        Option<Box<dyn Fn(&GenericTestWidget<T>, &UISizeConstraint) -> UISize + Send + Sync>>,
-    draw_callback: Option<Box<dyn Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync>>,
-    handle_focus_event_callback: Option<
-        Box<
-            dyn Fn(
-                    &Arc<GenericTestWidget<T>>,
-                    &mut EventContext,
-                    UIFocusEvent,
-                ) -> Option<UIFocusEvent>
-                + Send
-                + Sync,
-        >,
-    >,
-    handle_cursor_event_callback: Option<
-        Box<
-            dyn Fn(
-                    &Arc<GenericTestWidget<T>>,
-                    &mut EventContext,
-                    UICursorEvent,
-                ) -> Option<UICursorEvent>
-                + Send
-                + Sync,
-        >,
-    >,
-    handle_propagating_event_callback: Option<
-        Box<
-            dyn Fn(
-                    &Arc<GenericTestWidget<T>>,
-                    &mut EventContext,
-                    UIPropagatingEvent,
-                ) -> Option<UIPropagatingEvent>
-                + Send
-                + Sync,
-        >,
-    >,
+    layout_callback: Option<Box<dyn LayoutCallback<T>>>,
+    draw_callback: Option<Box<dyn DrawCallback<T>>>,
+    handle_focus_event_callback: Option<Box<dyn HandleFocusEventCallback<T>>>,
+    handle_cursor_event_callback: Option<Box<dyn HandleCursorEventCallback<T>>>,
+    handle_propagating_event_callback: Option<Box<dyn HandlePropagatingEventCallback<T>>>,
 }
 
 impl<T: Send + Sync> Widget for GenericTestWidget<T> {
@@ -167,14 +130,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn handle_propagating_event<F>(mut self, callback: F) -> Self
     where
-        F: Fn(
-                &Arc<GenericTestWidget<T>>,
-                &mut EventContext,
-                UIPropagatingEvent,
-            ) -> Option<UIPropagatingEvent>
-            + Send
-            + Sync
-            + 'static,
+        F: HandlePropagatingEventCallback<T> + 'static,
     {
         self.handle_propagating_event_callback = Some(Box::new(callback));
         self
@@ -182,14 +138,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn handle_cursor_event<F>(mut self, callback: F) -> Self
     where
-        F: Fn(
-                &Arc<GenericTestWidget<T>>,
-                &mut EventContext,
-                UICursorEvent,
-            ) -> Option<UICursorEvent>
-            + Send
-            + Sync
-            + 'static,
+        F: HandleCursorEventCallback<T> + 'static,
     {
         self.handle_cursor_event_callback = Some(Box::new(callback));
         self
@@ -197,10 +146,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn handle_focus_event<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&Arc<GenericTestWidget<T>>, &mut EventContext, UIFocusEvent) -> Option<UIFocusEvent>
-            + Send
-            + Sync
-            + 'static,
+        F: HandleFocusEventCallback<T> + 'static,
     {
         self.handle_focus_event_callback = Some(Box::new(callback));
         self
@@ -208,7 +154,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn draw<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&GenericTestWidget<T>, &mut DrawContext) + Send + Sync + 'static,
+        F: DrawCallback<T> + 'static,
     {
         self.draw_callback = Some(Box::new(callback));
         self
@@ -216,7 +162,7 @@ impl<T: Send + Sync> GenericTestWidgetBuilder<T> {
 
     pub fn layout<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&GenericTestWidget<T>, &UISizeConstraint) -> UISize + Send + Sync + 'static,
+        F: LayoutCallback<T> + 'static,
     {
         self.layout_callback = Some(Box::new(callback));
         self

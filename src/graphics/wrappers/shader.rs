@@ -10,7 +10,7 @@ use gl::types::{GLchar, GLenum, GLuint};
 use crate::{
     enclose,
     events::GameUserEvent,
-    exec::server::draw,
+    exec::server::draw::{self, ServerSendChannelExt},
     graphics::{context::DrawContext, GfxHandle},
 };
 

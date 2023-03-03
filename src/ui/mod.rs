@@ -1,24 +1,19 @@
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
 use event::{UICursorEvent, UIFocusEvent, UIPropagatingEvent};
 use utils::geom::{UIPos, UIRect, UISize};
 
-use crate::{exec::main_ctx::MainContext, graphics::context::DrawContext};
+use crate::{exec::main_ctx::MainContext, graphics::context::DrawContext, utils::uid::Uid};
 
 pub mod containers;
 pub mod controls;
 pub mod event;
 pub mod utils;
 
-pub type WidgetId = usize;
+pub type WidgetId = Uid;
 
-static WIDGET_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-pub fn acquire_widget_id() -> usize {
-    WIDGET_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+pub fn acquire_widget_id() -> WidgetId {
+    WidgetId::default()
 }
 
 pub struct EventContext<'a> {

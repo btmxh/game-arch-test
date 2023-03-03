@@ -6,10 +6,15 @@ use std::{
 
 use anyhow::Context;
 use derive_more::From;
+use trait_set::trait_set;
 
 use crate::utils::mutex::Mutex;
 
 use super::result::{TestError, TestResult};
+
+trait_set! {
+    pub trait OnCompleteCallback<C> = Fn(&GenericTestNode<C>, &TestResult) + Send + Sync;
+}
 
 #[allow(clippy::type_complexity)]
 pub struct GenericTestNode<C> {
@@ -18,7 +23,7 @@ pub struct GenericTestNode<C> {
     full_name: String,
     content: C,
     pub result: Mutex<Option<TestResult>>,
-    on_complete: Option<Box<dyn Fn(&GenericTestNode<C>, &TestResult) + Send + Sync>>,
+    on_complete: Option<Box<dyn OnCompleteCallback<C>>>,
 }
 
 pub type ParentTestNode = GenericTestNode<Mutex<ParentNodeContent>>;
@@ -38,7 +43,7 @@ pub struct ParentNodeContent {
 impl ParentTestNode {
     pub fn new_root<F>(name: impl Into<Cow<'static, str>>, on_complete: F) -> Arc<Self>
     where
-        F: Fn(&ParentTestNode, &TestResult) + Send + Sync + 'static,
+        F: OnCompleteCallback<Mutex<ParentNodeContent>> + 'static,
     {
         let name = name.into();
         Arc::new(Self {

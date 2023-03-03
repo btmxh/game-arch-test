@@ -12,7 +12,7 @@ use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEve
 
 use crate::{
     events::GameEvent,
-    exec::main_ctx::MainContext,
+    exec::{main_ctx::MainContext, server::draw::ServerSendChannelExt},
     scene::{main::RootScene, Scene},
     utils::error::ResultExt,
 };
@@ -72,7 +72,7 @@ impl VSync {
         } else {
             SwapInterval::DontWait
         };
-        main_ctx.channels.draw.execute_draw_event(move |s, _| {
+        main_ctx.channels.draw.execute(move |s, _| {
             s.set_swap_interval(interval)
                 .with_context(|| format!("unable to set vsync swap interval to {interval:?}"))
                 .log_error();
@@ -81,7 +81,6 @@ impl VSync {
                 interval != SwapInterval::DontWait,
                 interval
             );
-            []
         })?;
 
         Ok(())

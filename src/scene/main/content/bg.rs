@@ -14,7 +14,7 @@ use crate::{
     events::{GameEvent, GameUserEvent},
     exec::{
         main_ctx::MainContext,
-        server::GameServerSendChannel,
+        server::{draw::ServerSendChannelExt, GameServerSendChannel},
         task::{JoinToken, Joinable, TryJoinTaskResult},
     },
     graphics::{

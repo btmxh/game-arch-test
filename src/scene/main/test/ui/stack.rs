@@ -195,7 +195,7 @@ mod draw_tests {
     use anyhow::Context;
 
     use crate::{
-        exec::main_ctx::MainContext,
+        exec::{main_ctx::MainContext, server::draw::ServerSendChannelExt},
         graphics::context::DrawContext,
         scene::main::test::ui::{TestWidgetBuilder, TestWidgetId},
         test::{assert::assert_equals, result::TestResult, tree::ParentTestNode},
@@ -274,10 +274,9 @@ mod draw_tests {
         main_ctx
             .channels
             .draw
-            .execute_draw_event(move |ctx, _| {
+            .execute(move |ctx, _| {
                 stack.draw(ctx);
                 node.update(test_body(ctx, name, expected_log));
-                []
             })
             .context("unable to send test to run on draw server")?;
 

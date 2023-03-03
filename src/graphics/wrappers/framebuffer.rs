@@ -4,7 +4,11 @@ use gl::types::{GLenum, GLuint};
 use glutin::prelude::GlConfig;
 use winit::dpi::PhysicalSize;
 
-use crate::{events::GameUserEvent, exec::server::draw, graphics::context::DrawContext};
+use crate::{
+    events::GameUserEvent,
+    exec::server::draw::{self, ServerSendChannelExt},
+    graphics::context::DrawContext,
+};
 
 use super::{
     texture::{Texture, TextureHandle, TextureType},

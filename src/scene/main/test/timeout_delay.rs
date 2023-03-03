@@ -32,7 +32,7 @@ pub fn test(main_ctx: &mut MainContext, node: &Arc<ParentTestNode>) -> anyhow::R
         }
 
         main_ctx
-            .set_timeout(timeout, move |_, _, _| {
+            .set_timeout(timeout, move |_, _| {
                 test_node.update(do_test(now.elapsed(), timeout));
                 Ok(())
             })

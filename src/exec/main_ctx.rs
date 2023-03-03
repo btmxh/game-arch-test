@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use tracing_appender::non_blocking::WorkerGuard;
 use winit::{
     event::Event,
@@ -19,14 +19,14 @@ use crate::{
     scene::main::RootScene,
     test::TestManager,
     ui::{EventContext, Widget},
-    utils::{args::args, error::ResultExt},
+    utils::{args::args, error::ResultExt, mpsc},
 };
 
 use super::{
-    dispatch::{DispatchId, DispatchList},
+    dispatch::{DispatchList, DispatchMsg, EventDispatch},
     executor::GameServerExecutor,
-    server::{draw, GameServerChannel, GameServerSendChannel, ServerChannels},
-    task::{CancellationToken, TaskExecutor},
+    server::{draw::ServerSendChannelExt, ServerChannels},
+    task::TaskExecutor,
 };
 
 pub struct MainContext {
@@ -68,7 +68,7 @@ impl MainContext {
 
         if let Some(test_manager) = slf.test_manager.as_ref() {
             let test_manager = test_manager.clone();
-            slf.set_timeout(Duration::from_secs(30), move |_, _, _| {
+            slf.set_timeout(Duration::from_secs(30), move |_, _| {
                 test_manager.set_timeout_func();
                 Ok(())
             })
@@ -119,11 +119,17 @@ impl MainContext {
         event: GameEvent,
     ) -> anyhow::Result<()> {
         match event {
-            Event::UserEvent(GameUserEvent::Dispatch(msg)) => {
-                for (id, d) in self.dispatch_list.handle_dispatch_msg(msg).into_iter() {
-                    d(self, root_scene, id)?;
+            Event::UserEvent(GameUserEvent::Dispatch(msg)) => match msg {
+                DispatchMsg::ExecuteDispatch(ids) => {
+                    for dispatch in ids
+                        .into_iter()
+                        .filter_map(|id| self.dispatch_list.pop(id))
+                        .collect::<Vec<_>>()
+                    {
+                        dispatch(self, root_scene)?;
+                    }
                 }
-            }
+            },
 
             Event::UserEvent(GameUserEvent::Execute(callback)) => {
                 callback(self, root_scene).log_error();
@@ -140,18 +146,13 @@ impl MainContext {
         Ok(())
     }
 
-    pub fn set_timeout<F>(
-        &mut self,
-        timeout: Duration,
-        callback: F,
-    ) -> anyhow::Result<(DispatchId, CancellationToken)>
+    pub fn set_timeout<F>(&mut self, timeout: Duration, callback: F) -> anyhow::Result<()>
     where
-        F: FnOnce(&mut MainContext, &mut RootScene, DispatchId) -> anyhow::Result<()> + 'static,
+        F: EventDispatch + 'static,
     {
-        let cancel_token = CancellationToken::new();
-        let id = self.dispatch_list.push(callback, cancel_token.clone());
+        let id = self.dispatch_list.push(callback);
         self.channels.update.set_timeout(timeout, id)?;
-        Ok((id, cancel_token))
+        Ok(())
     }
 
     pub fn execute_blocking_task<F>(&mut self, f: F)
@@ -161,30 +162,28 @@ impl MainContext {
         self.task_executor.execute(f)
     }
 
-    #[allow(irrefutable_let_patterns)]
     pub fn execute_draw_sync<F, R>(&mut self, callback: F) -> anyhow::Result<R>
     where
         R: Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut Option<RootScene>) -> anyhow::Result<R> + Send + 'static,
+        F: FnOnce(&mut DrawContext, &mut Option<RootScene>) -> R + Send + 'static,
     {
         if let Some(server) = self.executor.main_runner.base.container.draw.as_mut() {
-            callback(&mut server.context, &mut server.root_scene)
+            Ok(callback(&mut server.context, &mut server.root_scene))
         } else {
+            let (sender, receiver) = mpsc::channels();
             self.channels
                 .draw
-                .send(draw::RecvMsg::ExecuteSync(Box::new(
-                    move |context, root_scene| Box::new(callback(context, root_scene)),
-                )))?;
-            if let draw::SendMsg::ExecuteSyncReturn(result) = self.channels.draw.recv()? {
-                Ok(result
-                    .downcast::<anyhow::Result<R>>()
-                    .map(|bx| *bx)
-                    .map_err(|_| {
-                        anyhow::format_err!("unable to downcast callback return value")
-                    })??)
-            } else {
-                bail!("unexpected response message from thread");
-            }
+                .execute(move |context, root_scene| {
+                    let value = callback(context, root_scene);
+                    sender
+                        .send(value)
+                        .context("unable to send value back to event thread")
+                        .log_error();
+                    // this error can only happen if the below `recv` calls were not called
+                    // for some reason
+                })
+                .context("unable to execute sync-type callback")?;
+            receiver.recv().context("unable to receive callback result")
         }
     }
 

@@ -1,20 +1,18 @@
 use std::collections::HashMap;
 
-use crate::scene::main::RootScene;
+use trait_set::trait_set;
 
-use super::{
-    main_ctx::MainContext,
-    task::{Cancellable, CancellationToken},
-};
+use crate::{scene::main::RootScene, utils::uid::Uid};
 
-pub type DispatchId = u64;
-pub type DispatchFnType =
-    dyn FnOnce(&mut MainContext, &mut RootScene, DispatchId) -> anyhow::Result<()>;
+use super::main_ctx::MainContext;
+
+trait_set! {
+    pub trait EventDispatch = FnOnce(&mut MainContext, &mut RootScene) -> anyhow::Result<()>;
+}
 
 #[derive(Default)]
 pub struct DispatchList {
-    dispatches: HashMap<DispatchId, (Box<DispatchFnType>, CancellationToken)>,
-    count: DispatchId,
+    dispatches: HashMap<Uid, Box<dyn EventDispatch>>,
 }
 
 impl DispatchList {
@@ -22,56 +20,28 @@ impl DispatchList {
         Self::default()
     }
 
-    pub fn push<F>(&mut self, callback: F, cancel_token: CancellationToken) -> DispatchId
+    pub fn push<F>(&mut self, callback: F) -> Uid
     where
-        F: FnOnce(&mut MainContext, &mut RootScene, DispatchId) -> anyhow::Result<()> + 'static,
+        F: EventDispatch + 'static,
     {
-        self.push_boxed(Box::new(callback), cancel_token)
+        self.push_boxed(Box::new(callback))
     }
 
-    pub fn push_boxed(
-        &mut self,
-        callback: Box<DispatchFnType>,
-        cancel_token: CancellationToken,
-    ) -> DispatchId {
-        let id = self.count;
-        self.count += 1;
+    pub fn push_boxed(&mut self, callback: Box<dyn EventDispatch>) -> Uid {
+        let id = Uid::new();
         debug_assert!(!self.dispatches.contains_key(&id));
-        self.dispatches.insert(id, (callback, cancel_token));
+        self.dispatches.insert(id, callback);
         id
     }
 
-    pub fn pop(&mut self, id: DispatchId) -> Option<(Box<DispatchFnType>, CancellationToken)> {
+    pub fn pop(&mut self, id: Uid) -> Option<Box<dyn EventDispatch>> {
         self.dispatches.remove(&id)
-    }
-
-    pub fn handle_dispatch_msg(
-        &mut self,
-        msg: DispatchMsg,
-    ) -> HashMap<DispatchId, Box<DispatchFnType>> {
-        let mut dispatches = HashMap::new();
-        match msg {
-            DispatchMsg::CancelDispatch(ids) => ids.iter().for_each(|&id| {
-                self.pop(id);
-            }),
-            DispatchMsg::ExecuteDispatch(ids) => {
-                ids.iter()
-                    .filter_map(|&id| self.pop(id).map(|d| (id, d)))
-                    .for_each(|(id, (callback, cancel_token))| {
-                        if !cancel_token.is_cancelled() {
-                            dispatches.insert(id, callback);
-                        }
-                    });
-            }
-        };
-        dispatches
     }
 }
 
 #[derive(Debug)]
 pub enum DispatchMsg {
-    CancelDispatch(Vec<DispatchId>),
-    ExecuteDispatch(Vec<DispatchId>),
+    ExecuteDispatch(Vec<Uid>),
 }
 
 // #[derive(Clone, Copy, Debug, PartialEq, Eq)]

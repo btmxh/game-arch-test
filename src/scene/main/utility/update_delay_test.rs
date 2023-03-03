@@ -65,7 +65,7 @@ impl UpdateDelayTest {
         let time = debug_get_time();
         let test_duration = thread_rng().gen_range(5.0..10.0);
         tracing::info!("{}", time);
-        main_ctx.set_timeout(Duration::from_secs_f64(test_duration), move |_, _, _| {
+        main_ctx.set_timeout(Duration::from_secs_f64(test_duration), move |_, _| {
             let delay = debug_get_time() - time - test_duration;
             let running_avg = self.delay.lock().add_delay(delay);
             tracing::info!("delay: {}s, avg: {}s", delay, running_avg);

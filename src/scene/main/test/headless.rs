@@ -39,7 +39,7 @@ impl Headless {
         main_ctx
             .set_timeout(
                 Duration::from_secs(5),
-                enclose!((no_draw) move |_, _, _| {
+                enclose!((no_draw) move |_, _| {
                     if !no_draw.finished() {
                         no_draw.update(Ok(()));
                     }

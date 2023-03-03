@@ -5,7 +5,7 @@ use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEve
 
 use crate::{
     events::GameEvent,
-    exec::main_ctx::MainContext,
+    exec::{main_ctx::MainContext, server::draw::ServerSendChannelExt},
     scene::{main::RootScene, Scene},
     utils::error::ResultExt,
 };

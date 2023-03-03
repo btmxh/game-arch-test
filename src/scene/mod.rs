@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use trait_set::trait_set;
+
 use crate::{events::GameEvent, exec::main_ctx::MainContext, graphics::context::DrawContext};
 
 use self::main::RootScene;
@@ -9,6 +11,12 @@ pub mod main;
 #[derive(Default)]
 pub struct SceneContainer {
     scenes: Vec<Arc<dyn Scene>>,
+}
+
+trait_set! {
+    pub trait EventHandler = Fn(&mut MainContext, &RootScene, GameEvent<'static>) -> Option<GameEvent<'static>>
+            + Send
+            + Sync;
 }
 
 impl SceneContainer {
@@ -26,10 +34,7 @@ impl SceneContainer {
 
     pub fn push_event_handler<F>(&mut self, event_handler: F)
     where
-        F: Fn(&mut MainContext, &RootScene, GameEvent<'static>) -> Option<GameEvent<'static>>
-            + Send
-            + Sync
-            + 'static,
+        F: EventHandler + 'static,
     {
         struct EventHandlerScene<F> {
             event_handler: F,
@@ -37,10 +42,7 @@ impl SceneContainer {
 
         impl<F> Scene for EventHandlerScene<F>
         where
-            F: Fn(&mut MainContext, &RootScene, GameEvent<'static>) -> Option<GameEvent<'static>>
-                + Send
-                + Sync
-                + 'static,
+            F: EventHandler + 'static,
         {
             fn handle_event<'a>(
                 self: Arc<Self>,

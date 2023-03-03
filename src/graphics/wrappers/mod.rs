@@ -9,8 +9,11 @@ use sendable::{send_rc::PostSend, SendRc};
 use crate::{
     enclose,
     events::GameUserEvent,
-    exec::server::{draw, GameServerSendChannel, ServerSendChannel},
-    utils::{error::ResultExt, send_sync::PhantomUnsync},
+    exec::server::{
+        draw::{self, ServerSendChannelExt},
+        GameServerSendChannel, ServerSendChannel,
+    },
+    utils::{error::ResultExt, send_sync::PhantomUnsync, uid::Uid},
 };
 
 use super::{context::DrawContext, GfxHandle};
@@ -80,16 +83,11 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> Drop for GLGfxHandleInne
     fn drop(&mut self) {
         let handle = self.handle;
         self.sender
-            .send(draw::RecvMsg::ExecuteEvent(
-                Box::new(move |context, _| {
+            .execute(move |context, _| {
                     if let Some(container) = T::get_container_mut(context) {
                         unsafe { container.remove(&handle) };
                     }
-
-                    Box::new(std::iter::empty::<GameUserEvent>())
-                }),
-            ))
-            .map_err(|e| anyhow::format_err!("{}", e))
+            })
             .context("unable to send GL handle drop execute message to draw server, the connection was closed (the handles were probably dropped with the server earlier, if so this is not a leak)")
             .log_trace();
     }
@@ -101,7 +99,7 @@ impl<T: GLHandleTrait<A> + 'static, A: Clone + 'static> GLGfxHandle<T, A> {
     /// Use this only if you are going to initialize the handle later
     pub unsafe fn new_uninit(draw: &mut draw::ServerChannel) -> Self {
         Self(Arc::new(GLGfxHandleInner {
-            handle: GfxHandle::new(draw),
+            handle: GfxHandle::new(),
             sender: draw.clone_sender(),
             _phantom: PhantomData,
         }))
@@ -222,12 +220,12 @@ impl<T: GLHandleTrait<()>> GLHandle<T> {
 }
 
 pub struct GLHandleContainer<T: GLHandleTrait<A>, A: Clone = ()>(
-    HashMap<u64, GLHandle<T, A>>,
+    HashMap<Uid, GLHandle<T, A>>,
     PhantomUnsync,
 );
 
 pub struct SendGLHandleContainer<T: GLHandleTrait<A>, A: Clone = ()>(
-    HashMap<u64, GLHandle<T, A>>,
+    HashMap<Uid, GLHandle<T, A>>,
     PostSend<GLHandleInner<T, A>>,
 );
 
@@ -266,7 +264,7 @@ impl<T: GLHandleTrait<A>, A: Clone> GLHandleContainer<T, A> {
         Self(HashMap::new(), PhantomData)
     }
 
-    fn handle_to_key(handle: &GLGfxHandle<T, A>) -> u64 {
+    fn handle_to_key(handle: &GLGfxHandle<T, A>) -> Uid {
         handle.0.handle.handle
     }
 

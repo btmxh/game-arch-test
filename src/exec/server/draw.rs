@@ -2,32 +2,27 @@ use crate::{
     events::GameUserEvent,
     graphics::context::{DrawContext, SendDrawContext},
     scene::main::RootScene,
-    utils::mpsc::{Receiver, Sender},
+    utils::{
+        error::ResultExt,
+        mpsc::{Receiver, Sender},
+    },
 };
-use std::any::Any;
-
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use glutin::config::Config;
+use trait_set::trait_set;
 use winit::event_loop::EventLoopProxy;
 
-use super::{
-    GameServer, GameServerChannel, GameServerSendChannel, SendGameServer, ServerSendChannel,
-};
+use super::{GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
 
-pub type DrawCallback = dyn FnMut(&Server) -> anyhow::Result<()> + Send;
+pub type SendMsg = ();
 
-pub enum SendMsg {
-    ExecuteSyncReturn(Box<dyn Any + Send>),
+trait_set! {
+    pub trait DrawDispatch = FnOnce(&mut DrawContext, &mut Option<RootScene>) + Send;
 }
-
-type ExecuteSyncReturnType = Box<dyn Any + Send + 'static>;
-type ExecuteEventReturnType = Box<dyn Iterator<Item = GameUserEvent>>;
-type ExecuteCallback<R> = dyn FnOnce(&mut DrawContext, &mut Option<RootScene>) -> R + Send;
 
 pub enum RecvMsg {
     SetFrequencyProfiling(bool),
-    ExecuteSync(Box<ExecuteCallback<ExecuteSyncReturnType>>),
-    ExecuteEvent(Box<ExecuteCallback<ExecuteEventReturnType>>),
+    Execute(Box<dyn DrawDispatch>),
 }
 pub struct Server {
     pub context: DrawContext,
@@ -80,7 +75,6 @@ impl SendServer {
 pub struct ServerChannel {
     pub sender: Sender<RecvMsg>,
     pub receiver: Receiver<SendMsg>,
-    pub current_id: u64,
 }
 
 impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
@@ -95,49 +89,40 @@ impl GameServerSendChannel<RecvMsg> for ServerChannel {
     }
 }
 
-fn execute_draw_event<F, R>(
-    channel: &impl GameServerSendChannel<RecvMsg>,
-    callback: F,
-) -> anyhow::Result<()>
-where
-    R: IntoIterator<Item = GameUserEvent> + Send + 'static,
-    F: FnOnce(&mut DrawContext, &mut Option<RootScene>) -> R + Send + 'static,
-{
-    channel.send(RecvMsg::ExecuteEvent(Box::new(
-        move |context, root_scene| Box::new(callback(context, root_scene).into_iter()),
-    )))
-}
-
-impl ServerChannel {
-    pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
+pub trait ServerSendChannelExt: GameServerSendChannel<RecvMsg> {
+    fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
         self.send(RecvMsg::SetFrequencyProfiling(fp))
             .context("unable to send frequency profiling request")
     }
 
-    pub fn generate_id(&mut self) -> u64 {
-        let id = self.current_id;
-        self.current_id += 1;
-        id
+    fn execute<F>(&self, callback: F) -> anyhow::Result<()>
+    where
+        F: DrawDispatch + 'static,
+    {
+        self.send(RecvMsg::Execute(Box::new(callback)))
+            .context("unable to send execute message to draw server")
     }
 
-    pub fn execute_draw_event<F, R>(&self, callback: F) -> anyhow::Result<()>
+    fn execute_draw_event<F, R>(&self, callback: F) -> anyhow::Result<()>
     where
         R: IntoIterator<Item = GameUserEvent> + Send + 'static,
         F: FnOnce(&mut DrawContext, &mut Option<RootScene>) -> R + Send + 'static,
     {
-        self::execute_draw_event(self, callback)
+        self.execute(move |context, root_scene| {
+            for event in callback(context, root_scene) {
+                context
+                    .base
+                    .proxy
+                    .send_event(event)
+                    .map_err(|e| anyhow!("{e}"))
+                    .context("unable to send events to main thread")
+                    .log_warn();
+            }
+        })
     }
 }
 
-impl ServerSendChannel<RecvMsg> {
-    pub fn execute_draw_event<F, R>(&self, callback: F) -> anyhow::Result<()>
-    where
-        R: IntoIterator<Item = GameUserEvent> + Send + 'static,
-        F: FnOnce(&mut DrawContext, &mut Option<RootScene>) -> R + Send + 'static,
-    {
-        self::execute_draw_event(self, callback)
-    }
-}
+impl<T> ServerSendChannelExt for T where T: GameServerSendChannel<RecvMsg> {}
 
 #[test]
 fn test_send_sync() {

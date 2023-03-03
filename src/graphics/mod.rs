@@ -1,6 +1,6 @@
 use std::{borrow::Cow, hash::Hash, marker::PhantomData};
 
-use crate::exec::server::draw;
+use crate::utils::uid::Uid;
 
 use self::wrappers::{
     buffer::{BufferContainer, SendBufferContainer},
@@ -21,20 +21,23 @@ pub mod wrappers;
 
 #[derive(Debug)]
 pub struct GfxHandle<T> {
-    pub handle: u64,
+    pub handle: Uid,
     data: PhantomData<fn() -> T>,
 }
 
 impl<T> GfxHandle<T> {
     pub fn from_handle(handle: u64) -> Self {
         Self {
-            handle,
+            handle: Uid::from_raw(handle),
             data: PhantomData,
         }
     }
 
-    pub fn new(channel: &mut draw::ServerChannel) -> Self {
-        Self::from_handle(channel.generate_id())
+    pub fn new() -> Self {
+        Self {
+            handle: Uid::new(),
+            data: PhantomData,
+        }
     }
 }
 
@@ -62,6 +65,12 @@ impl<T> Clone for GfxHandle<T> {
 }
 
 impl<T> Copy for GfxHandle<T> {}
+
+impl<T> Default for GfxHandle<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Default)]
 pub struct HandleContainer {

@@ -3,7 +3,9 @@ use std::sync::Arc;
 use anyhow::Context;
 
 use crate::{
-    events::GameEvent, exec::main_ctx::MainContext, graphics::context::DrawContext,
+    events::GameEvent,
+    exec::{main_ctx::MainContext, server::draw::ServerSendChannelExt},
+    graphics::context::DrawContext,
     utils::args::args,
 };
 
@@ -42,9 +44,8 @@ impl RootScene {
         main_ctx
             .channels
             .draw
-            .execute_draw_event(move |_, root_scene_opt| {
+            .execute(move |_, root_scene_opt| {
                 *root_scene_opt = Some(draw_self);
-                []
             })
             .context("unable to share root scene with draw server")?;
 

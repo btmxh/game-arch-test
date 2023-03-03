@@ -8,7 +8,7 @@ use winit::{
 
 use crate::{
     events::{GameEvent, GameUserEvent},
-    exec::main_ctx::MainContext,
+    exec::{main_ctx::MainContext, server::draw::ServerSendChannelExt},
     scene::Scene,
     ui::utils::geom::UISize,
     utils::{args::args, error::ResultExt, mutex::Mutex},
@@ -95,18 +95,16 @@ impl HandleResize {
         block: bool,
     ) {
         if block {
-            main_ctx.execute_draw_sync(move |context, _| {
-                context.resize(display_size, ui_size);
-                Ok(())
-            })
-        } else {
             main_ctx
-                .channels
-                .draw
-                .execute_draw_event(move |context, _| {
+                .execute_draw_sync(move |context, _| {
                     context.resize(display_size, ui_size);
-                    []
+                    Ok(())
                 })
+                .and_then(std::convert::identity)
+        } else {
+            main_ctx.channels.draw.execute(move |context, _| {
+                context.resize(display_size, ui_size);
+            })
         }
         .context("unable to send resize execute request to draw server")
         .log_error();
@@ -137,7 +135,7 @@ impl HandleResize {
     }
 
     fn set_timeout(self: Arc<Self>, main_ctx: &mut MainContext) -> anyhow::Result<()> {
-        main_ctx.set_timeout(Self::THROTTLE_DURATION, move |main_ctx, root_scene, _| {
+        main_ctx.set_timeout(Self::THROTTLE_DURATION, move |main_ctx, root_scene| {
             self.resize_timeout_func(main_ctx, root_scene).log_error();
             Ok(())
         })?;

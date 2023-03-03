@@ -121,11 +121,7 @@ impl SendDrawContext {
                 test_logs: HashMap::new(),
                 transform_stack: TransformStack::default(),
             },
-            ServerChannel {
-                sender,
-                receiver,
-                current_id: 0,
-            },
+            ServerChannel { sender, receiver },
         ))
     }
 }
@@ -165,18 +161,7 @@ impl DrawContext {
         for message in messages {
             match message {
                 RecvMsg::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
-                RecvMsg::ExecuteSync(callback) => {
-                    let result = callback(self, root_scene);
-                    self.base.send(SendMsg::ExecuteSyncReturn(result)).context(
-                        "unable to send ExecuteSyncReturn message for Sync return mechanism",
-                    )?;
-                }
-                RecvMsg::ExecuteEvent(callback) => {
-                    callback(self, root_scene)
-                        .try_for_each(|evt| self.base.proxy.send_event(evt))
-                        .map_err(|e| anyhow::format_err!("{}", e))
-                        .context("unable to send event to event loop")?;
-                }
+                RecvMsg::Execute(callback) => callback(self, root_scene),
             }
         }
 

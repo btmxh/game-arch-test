@@ -141,22 +141,3 @@ impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
         run_count as _
     }
 }
-
-#[macro_export]
-macro_rules! handle_msg {
-    ($self: expr, $ret: expr, $name: expr, $make_sync: expr, $make_event: expr) => {
-        match $ret {
-            Some(ReturnMechanism::Sync) => $self.base.send(($make_sync)()).with_context(|| {
-                format!("unable to send {} message for Sync return mechanism", $name)
-            }),
-            Some(ReturnMechanism::Event(id)) => $self
-                .base
-                .proxy
-                .send_event(($make_event)(id))
-                .with_context(|| {
-                    format!("unable to send {} event for Event return mechanism", $name)
-                }),
-            None => Ok(()),
-        }
-    };
-}

@@ -66,7 +66,7 @@ impl GameServerExecutor {
 
     pub fn new(
         audio: audio::Server,
-        draw: draw::SendServer,
+        draw: draw::Server,
         update: update::Server,
     ) -> anyhow::Result<Self> {
         let mut container = ServerContainer {

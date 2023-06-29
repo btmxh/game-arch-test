@@ -4,11 +4,7 @@ use anyhow::Context;
 use tracing::subscriber::set_global_default;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_log::LogTracer;
-use tracing_subscriber::{
-    fmt::{self},
-    prelude::__tracing_subscriber_SubscriberExt,
-    EnvFilter,
-};
+use tracing_subscriber::{fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter};
 
 use crate::utils::args::args;
 

@@ -24,11 +24,10 @@ fn main() -> anyhow::Result<()> {
     parse_args();
     let guard = init_log()?;
     let event_loop = EventLoopBuilder::<GameUserEvent>::with_user_event().build();
-    let (display, gl_config) =
-        Display::new_display(&event_loop, PhysicalSize::new(1280, 720), "hello")
-            .context("unable to create main display")?;
+    let display = Display::new_display(&event_loop, PhysicalSize::new(1280, 720), "hello")
+        .context("unable to create main display")?;
     let (draw, draw_channels) =
-        draw::SendServer::new(event_loop.create_proxy(), gl_config, &display)
+        pollster::block_on(draw::Server::new(event_loop.create_proxy(), &display))
             .context("unable to initialize draw server")?;
     let (audio, audio_channels) = audio::Server::new(event_loop.create_proxy());
     let (update, update_channels) = update::Server::new(event_loop.create_proxy());

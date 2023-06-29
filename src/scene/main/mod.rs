@@ -5,7 +5,7 @@ use anyhow::Context;
 use crate::{
     events::GameEvent,
     exec::{main_ctx::MainContext, server::draw::ServerSendChannelExt},
-    graphics::context::DrawContext,
+    graphics::context::{DrawContext, DrawingContext},
     utils::args::args,
 };
 
@@ -56,8 +56,8 @@ impl RootScene {
         self.container.clone().handle_event(ctx, self, event);
     }
 
-    pub fn draw(&self, draw_ctx: &mut DrawContext) {
-        self.container.clone().draw(draw_ctx);
+    pub fn draw(&self, draw_ctx: &mut DrawContext, drawing: &DrawingContext) {
+        self.container.clone().draw(draw_ctx, drawing);
     }
 }
 

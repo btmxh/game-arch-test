@@ -4,20 +4,21 @@ use crate::{
         draw::{RecvMsg, SendMsg, ServerChannel},
         BaseGameServer,
     },
-    graphics::{debug_callback::enable_gl_debug_callback, HandleContainer, SendHandleContainer},
-    scene::main::RootScene,
+    scene::{
+        main::{core::clear::Clear, RootScene},
+        Scene,
+    },
     ui::utils::geom::UISize,
     utils::args::args,
 };
-use std::{borrow::Cow, collections::HashMap, ffi::CString, num::NonZeroU32, time::Duration};
+use std::{borrow::Cow, collections::HashMap, num::NonZeroU32, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use glutin::{
-    config::Config,
-    context::{ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext},
-    display::{Display, GetGlDisplay},
-    prelude::{GlDisplay, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentGlContext},
-    surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface},
+use wgpu::{
+    Adapter, Backends, CommandEncoder, Device, DeviceDescriptor, Features, Instance,
+    InstanceDescriptor, Limits, Operations, PowerPreference, PresentMode, Queue, RenderPass,
+    RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, Surface,
+    SurfaceConfiguration, SurfaceTexture, TextureUsages, TextureView,
 };
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 
@@ -28,74 +29,82 @@ use super::transform_stack::TransformStack;
 pub struct DrawContext {
     pub test_logs: HashMap<Cow<'static, str>, String>,
     pub transform_stack: TransformStack,
-    pub handles: HandleContainer,
-    pub swap_interval: SwapInterval,
-    pub gl_surface: Surface<WindowSurface>,
-    pub gl_context: PossiblyCurrentContext,
-    pub gl_display: Display,
-    pub gl_config: Config,
-    pub display_size: PhysicalSize<NonZeroU32>,
+    pub instance: Instance,
+    pub adapter: Adapter,
+    pub surface: Surface,
+    pub device: Device,
+    pub queue: Queue,
+    pub surface_configuration: SurfaceConfiguration,
     pub ui_size: UISize,
     pub display_handles: SendRawHandle,
     pub base: BaseGameServer<SendMsg, RecvMsg>,
 }
 
-pub struct SendDrawContext {
-    pub test_logs: HashMap<Cow<'static, str>, String>,
-    pub transform_stack: TransformStack,
-    pub handles: SendHandleContainer,
-    pub swap_interval: SwapInterval,
-    pub gl_context: NotCurrentContext,
-    pub gl_display: Display,
-    pub gl_config: Config,
-    pub display_size: PhysicalSize<NonZeroU32>,
-    pub ui_size: UISize,
-    pub display_handles: SendRawHandle,
-    pub base: BaseGameServer<SendMsg, RecvMsg>,
+pub struct DrawingContext {
+    pub surface_texture: SurfaceTexture,
+    pub surface_texture_view: TextureView,
+}
+impl DrawingContext {
+    pub fn begin_direct_render_pass<'a>(
+        &'a self,
+        encoder: &'a mut CommandEncoder,
+        label: Option<&str>,
+    ) -> RenderPass {
+        encoder.begin_render_pass(&RenderPassDescriptor {
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: &self.surface_texture_view,
+                resolve_target: None,
+                ops: Operations {
+                    ..Default::default()
+                },
+            })],
+            depth_stencil_attachment: None,
+            label,
+        })
+    }
 }
 
-impl SendDrawContext {
-    pub fn new(
+impl DrawContext {
+    pub async fn new(
         proxy: EventLoopProxy<GameUserEvent>,
-        gl_config: Config,
         display: &crate::display::Display,
     ) -> anyhow::Result<(Self, ServerChannel)> {
         let (base, sender, receiver) = BaseGameServer::new(proxy);
-        let gl_display = gl_config.display();
-        let context_attribs = ContextAttributesBuilder::new()
-            .with_context_api(ContextApi::Gles(None))
-            .with_debug(cfg!(debug_assertions))
-            .build(Some(display.get_raw_window_handle()));
-        let gl_context = unsafe { gl_display.create_context(&gl_config, &context_attribs) }
-            .context("unable to create OpenGL context")?;
-        let display_size = display.get_size();
-        let gl_surface = unsafe {
-            gl_display
-                .create_window_surface(
-                    &gl_config,
-                    &SurfaceAttributesBuilder::<WindowSurface>::new().build(
-                        display.get_raw_window_handle(),
-                        NonZeroU32::new(display_size.width).unwrap(),
-                        NonZeroU32::new(display_size.height).unwrap(),
-                    ),
-                )
-                .context("unable to create window surface for OpenGL rendering")?
-        };
-        let current_gl_context = gl_context
-            .make_current(&gl_surface)
-            .context("unable to make OpenGL context current")?;
-        gl::load_with(|symbol| {
-            let symbol = CString::new(symbol).unwrap();
-            gl_display.get_proc_address(symbol.as_c_str()).cast()
+        let instance = Instance::new(InstanceDescriptor {
+            backends: Backends::all(),
+            ..Default::default()
         });
-        enable_gl_debug_callback();
-        unsafe {
-            gl::Enable(gl::BLEND);
-            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA)
-        }
-        let gl_context = current_gl_context
-            .make_not_current()
-            .context("unable to make GL context not current")?;
+
+        let surface = unsafe { instance.create_surface(display.get_winit_window()) }
+            .context("Unable to create window surface")?;
+        let adapter = instance
+            .request_adapter(&RequestAdapterOptions {
+                power_preference: PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .context("Unable to find suitable adapter (GPU)")?;
+        let (device, queue) = adapter
+            .request_device(
+                &DeviceDescriptor {
+                    label: None,
+                    features: Features::empty(),
+                    limits: Limits::downlevel_defaults(),
+                },
+                None,
+            )
+            .await
+            .context("Unable to request wgpu device")?;
+        let surface_caps = surface.get_capabilities(&adapter);
+        let surface_format =
+            if let Some(format) = surface_caps.formats.iter().find(|f| f.is_srgb()).copied() {
+                format
+            } else if let Some(format) = surface_caps.formats.get(0).copied() {
+                format
+            } else {
+                return Err(anyhow::anyhow!("No surface format found"));
+            };
         let display_size = {
             let size = display.get_size();
             PhysicalSize {
@@ -103,6 +112,20 @@ impl SendDrawContext {
                 height: NonZeroU32::new(size.height).expect("display height is 0"),
             }
         };
+        let surface_configuration = SurfaceConfiguration {
+            usage: TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width: display_size.width.get(),
+            height: display_size.height.get(),
+            alpha_mode: surface_caps
+                .alpha_modes
+                .first()
+                .copied()
+                .ok_or_else(|| anyhow::anyhow!("No alpha modes found"))?,
+            present_mode: PresentMode::AutoVsync,
+            view_formats: vec![],
+        };
+        surface.configure(&device, &surface_configuration);
         let ui_size = display
             .get_size()
             .to_logical(display.get_scale_factor())
@@ -111,22 +134,20 @@ impl SendDrawContext {
             Self {
                 base,
                 display_handles: display.get_raw_handles(),
-                display_size,
                 ui_size,
-                gl_display,
-                gl_context,
-                gl_config,
-                swap_interval: SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
-                handles: SendHandleContainer::new(),
+                instance,
+                surface,
+                adapter,
+                device,
+                queue,
+                surface_configuration,
                 test_logs: HashMap::new(),
                 transform_stack: TransformStack::default(),
             },
             ServerChannel { sender, receiver },
         ))
     }
-}
 
-impl DrawContext {
     pub fn get_test_log(&mut self, name: &str) -> &mut String {
         if !self.test_logs.contains_key(name) {
             self.test_logs
@@ -140,10 +161,14 @@ impl DrawContext {
         self.test_logs.remove(name).unwrap_or_default()
     }
 
-    pub fn set_swap_interval(&mut self, swap_interval: SwapInterval) -> anyhow::Result<()> {
-        self.gl_surface
-            .set_swap_interval(&self.gl_context, swap_interval)?;
-        self.swap_interval = swap_interval;
+    fn reconfigure(&mut self) {
+        self.surface
+            .configure(&self.device, &self.surface_configuration);
+    }
+
+    pub fn set_swap_interval(&mut self, swap_interval: PresentMode) -> anyhow::Result<()> {
+        self.surface_configuration.present_mode = swap_interval;
+        self.reconfigure();
         Ok(())
     }
 
@@ -169,38 +194,10 @@ impl DrawContext {
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>, ui_size: UISize) {
-        self.gl_surface
-            .resize(&self.gl_context, new_size.width, new_size.height);
-        unsafe {
-            gl::Viewport(
-                0,
-                0,
-                new_size.width.get().try_into().unwrap(),
-                new_size.height.get().try_into().unwrap(),
-            );
-        }
-        self.display_size = new_size;
         self.ui_size = ui_size;
-    }
-
-    pub fn to_send(self) -> anyhow::Result<SendDrawContext> {
-        let gl_context = self
-            .gl_context
-            .make_not_current()
-            .context("unable to make OpenGL context not current")?;
-        Ok(SendDrawContext {
-            base: self.base,
-            gl_config: self.gl_config,
-            gl_context,
-            gl_display: self.gl_display,
-            display_handles: self.display_handles,
-            display_size: self.display_size,
-            ui_size: self.ui_size,
-            swap_interval: self.swap_interval,
-            handles: self.handles.to_send(),
-            test_logs: self.test_logs,
-            transform_stack: self.transform_stack,
-        })
+        self.surface_configuration.width = new_size.width.get();
+        self.surface_configuration.height = new_size.height.get();
+        self.reconfigure();
     }
 
     pub fn draw(
@@ -213,47 +210,23 @@ impl DrawContext {
         self.base.run("Draw", runner_frequency);
         self.process_messages(single && headless, root_scene)?;
         if !headless {
+            let output = self
+                .surface
+                .get_current_texture()
+                .context("Unable to retrieve surface texture")?;
+            let view = output.texture.create_view(&Default::default());
+            let drawing_context = DrawingContext {
+                surface_texture: output,
+                surface_texture_view: view,
+            };
+
             if let Some(root_scene) = root_scene {
-                root_scene.draw(self);
+                root_scene.draw(self, &drawing_context);
+            } else {
+                Arc::new(Clear).draw(self, &drawing_context);
             }
-            self.gl_surface.swap_buffers(&self.gl_context)?;
+            drawing_context.surface_texture.present();
         }
         Ok(())
-    }
-}
-
-impl SendDrawContext {
-    pub fn to_nonsend(self) -> anyhow::Result<DrawContext> {
-        let gl_surface = unsafe {
-            self.gl_display
-                .create_window_surface(
-                    &self.gl_config,
-                    &SurfaceAttributesBuilder::<WindowSurface>::new().build(
-                        self.display_handles.0,
-                        self.display_size.width,
-                        self.display_size.height,
-                    ),
-                )
-                .context("unable to create window surface for OpenGL rendering")?
-        };
-        let gl_context = self
-            .gl_context
-            .make_current(&gl_surface)
-            .context("unable to make OpenGL context current")?;
-        gl_surface.set_swap_interval(&gl_context, self.swap_interval)?;
-        Ok(DrawContext {
-            base: self.base,
-            gl_config: self.gl_config,
-            gl_context,
-            gl_display: self.gl_display,
-            gl_surface,
-            display_handles: self.display_handles,
-            display_size: self.display_size,
-            ui_size: self.ui_size,
-            swap_interval: self.swap_interval,
-            handles: self.handles.to_nonsend(),
-            test_logs: self.test_logs,
-            transform_stack: self.transform_stack,
-        })
     }
 }

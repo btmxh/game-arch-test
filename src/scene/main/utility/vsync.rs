@@ -1,13 +1,10 @@
-use std::{
-    num::NonZeroU32,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 use anyhow::Context;
-use glutin::surface::SwapInterval;
+use wgpu::PresentMode;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 use crate::{
@@ -56,6 +53,15 @@ impl Scene for VSync {
 
 impl VSync {
     pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
+        main_ctx.execute_draw_sync(|draw_ctx, _| {
+            let present_modes = draw_ctx
+                .surface
+                .get_capabilities(&draw_ctx.adapter)
+                .present_modes;
+            for present_mode in present_modes {
+                tracing::info!("Supported present mode: {:?}", present_mode);
+            }
+        })?;
         let slf = Self {
             current_vsync: AtomicBool::new(false),
         };
@@ -68,19 +74,15 @@ impl VSync {
         let current_vsync = !self.current_vsync.load(Ordering::Relaxed);
         self.current_vsync.store(current_vsync, Ordering::Relaxed);
         let interval = if current_vsync {
-            SwapInterval::Wait(NonZeroU32::new(1).unwrap())
+            PresentMode::AutoVsync
         } else {
-            SwapInterval::DontWait
+            PresentMode::AutoNoVsync
         };
         main_ctx.channels.draw.execute(move |s, _| {
             s.set_swap_interval(interval)
                 .with_context(|| format!("unable to set vsync swap interval to {interval:?}"))
                 .log_error();
-            tracing::info!(
-                "VSync swap interval set to {} ({:?})",
-                interval != SwapInterval::DontWait,
-                interval
-            );
+            tracing::info!("VSync swap interval set to {interval:?}");
         })?;
 
         Ok(())

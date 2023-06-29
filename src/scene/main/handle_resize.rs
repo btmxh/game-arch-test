@@ -72,8 +72,6 @@ impl Scene for HandleResize {
             event => Some(event),
         }
     }
-
-    fn draw(self: Arc<Self>, _: &mut crate::graphics::context::DrawContext) {}
 }
 
 impl HandleResize {

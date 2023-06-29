@@ -91,7 +91,7 @@ pub trait GameServer {
 pub enum SendGameServer {
     Audio(Box<audio::Server>),
     Update(Box<update::Server>),
-    Draw(Box<draw::SendServer>),
+    Draw(Box<draw::Server>),
 }
 
 impl SendGameServer {

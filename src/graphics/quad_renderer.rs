@@ -1,161 +1,188 @@
-use std::ffi::CStr;
+use std::{mem::size_of, sync::Arc};
 
-use anyhow::Context;
-use gl::types::GLuint;
 use glam::{Mat3, Vec2};
-
-use crate::exec::server::draw;
-
-use super::{
-    context::DrawContext,
-    wrappers::{shader::ProgramHandle, vertex_array::VertexArrayHandle},
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, BlendState, ColorTargetState, ColorWrites, CommandEncoder,
+    Face, FragmentState, FrontFace, MultisampleState, PipelineLayoutDescriptor, PolygonMode,
+    PrimitiveState, PrimitiveTopology, PushConstantRange, RenderPipeline, RenderPipelineDescriptor,
+    Sampler, SamplerBindingType, ShaderStages, TextureSampleType, TextureView,
+    TextureViewDimension, VertexState,
 };
 
-mod shader {
-    pub const VERTEX: &str = r#"
-    #version 300 es
+use crate::{enclose, exec::main_ctx::MainContext, utils::mutex::Mutex};
 
-    out vec2 vf_orig_pos;
-    out vec2 vf_tex_coords;
-    out vec2 vf_radius;
-    out vec2 vf_pos_bounds[2];
+use super::context::{DrawContext, DrawingContext};
 
-    uniform vec2 pos_bounds[2];
-    uniform vec2 radius;
-    uniform vec2 tex_bounds[2];
-    uniform mat3 transform;
-
-    const vec2 mix_tex_coords[4] = vec2[](
-        vec2(0.0, 0.0), vec2(1.0, 0.0),
-        vec2(0.0, 1.0), vec2(1.0, 1.0)
-    );
-
-    void main() {
-        float x = pos_bounds[int(gl_VertexID % 2)].x;
-        float y = pos_bounds[int(gl_VertexID < 2)].y;
-        vf_orig_pos = vec2(x, y);
-        vec3 pos = transform * vec3(vf_orig_pos, 1.0);
-        gl_Position = vec4(pos.xy, 0.0, pos.z);
-        vf_tex_coords = mix(tex_bounds[0], tex_bounds[1], mix_tex_coords[gl_VertexID]);
-        vf_radius = radius;
-        vf_pos_bounds[0] = pos_bounds[0] + radius;
-        vf_pos_bounds[1] = pos_bounds[1] - radius;
-    }
-    "#;
-
-    pub const FRAGMENT: &str = r#"
-    #version 300 es
-    precision mediump float;
-
-    in vec2 vf_orig_pos;
-    in vec2 vf_tex_coords;
-    in vec2 vf_radius;
-    in vec2 vf_pos_bounds[2];
-
-    out vec4 color;
-
-    uniform sampler2D tex;
-
-    void main() {
-        const float max_distance = 0.01;
-        vec2 offset = clamp(vf_orig_pos, vf_pos_bounds[0], vf_pos_bounds[1]) - vf_orig_pos;
-        vec2 normalized_offset = offset / vf_radius;
-        float distance = length(normalized_offset);
-        float alpha = 1.0 - smoothstep(1.0, 1.0 + max_distance, distance);
-
-        color = texture(tex, vf_tex_coords);
-        color.a *= alpha;
-    }
-    "#;
+struct State {
+    pipeline: RenderPipeline,
+    texture_bind_group_layout: BindGroupLayout,
 }
 
 #[derive(Clone)]
 pub struct QuadRenderer {
-    vertex_array: VertexArrayHandle,
-    program: ProgramHandle,
+    state: Arc<Mutex<Option<State>>>,
+}
+
+#[repr(C, align(16))]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct QuadPushConstants {
+    pos_bounds: [Vec2; 2],
+    radius: Vec2,
+    tex_bounds: [Vec2; 2],
+    transform: Mat3,
+    _padding: [f32; 1],
 }
 
 impl QuadRenderer {
     pub const FULL_WINDOW_POS_BOUNDS: [Vec2; 2] = [Vec2::new(-1.0, -1.0), Vec2::new(1.0, 1.0)];
     pub const FULL_TEXTURE_TEX_BOUNDS: [Vec2; 2] = [Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0)];
 
-    pub fn new(
-        dummy_vao: VertexArrayHandle,
-        draw: &mut draw::ServerChannel,
-    ) -> anyhow::Result<Self> {
-        let program = ProgramHandle::new_vf(
-            draw,
-            "quad renderer shader program",
-            shader::VERTEX,
-            shader::FRAGMENT,
-        )
-        .context("quad renderer initialization (in draw server) failed")?;
+    pub fn new(main_ctx: &mut MainContext) -> anyhow::Result<Self> {
+        let state = Arc::new(Mutex::new(None));
+        #[allow(unused_mut)]
+        main_ctx.execute_draw_sync(enclose!(
+            (state) move |draw, _| {
+                let shader = draw
+                    .device
+                    .create_shader_module(wgpu::include_wgsl!("quad.wgsl"));
+                let texture_bind_group_layout =
+                    draw.device
+                        .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                            label: Some("quad renderer texture label"),
+                            entries: &[
+                                BindGroupLayoutEntry {
+                                    binding: 0,
+                                    ty: wgpu::BindingType::Texture {
+                                        sample_type: TextureSampleType::Float { filterable: true },
+                                        view_dimension: TextureViewDimension::D2,
+                                        multisampled: false,
+                                    },
+                                    visibility: ShaderStages::FRAGMENT,
+                                    count: None,
+                                },
+                                BindGroupLayoutEntry {
+                                    binding: 1,
+                                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                                    visibility: ShaderStages::FRAGMENT,
+                                    count: None,
+                                },
+                            ],
+                        });
+                let pipeline_layout =
+                    draw.device
+                        .create_pipeline_layout(&PipelineLayoutDescriptor {
+                            label: Some("quad renderer"),
+                            push_constant_ranges: &[PushConstantRange {
+                                stages: ShaderStages::VERTEX_FRAGMENT,
+                                range: 0..u32::try_from(size_of::<QuadPushConstants>())
+                                    .expect("sizeof(QuadPushConstants) should fit in an u32"),
+                            }],
+                            bind_group_layouts: &[&texture_bind_group_layout],
+                        });
+                let pipeline = draw
+                    .device
+                    .create_render_pipeline(&RenderPipelineDescriptor {
+                        label: Some("quad renderer pipeline"),
+                        layout: Some(&pipeline_layout),
+                        vertex: VertexState {
+                            module: &shader,
+                            entry_point: "vs_main",
+                            buffers: &[],
+                        },
+                        fragment: Some(FragmentState {
+                            module: &shader,
+                            entry_point: "fs_main",
+                            targets: &[Some(ColorTargetState {
+                                format: draw.surface_configuration.format,
+                                blend: Some(BlendState::ALPHA_BLENDING),
+                                write_mask: ColorWrites::ALL,
+                            })],
+                        }),
+                        primitive: PrimitiveState {
+                            topology: PrimitiveTopology::TriangleStrip,
+                            strip_index_format: None,
+                            front_face: FrontFace::Ccw,
+                            polygon_mode: PolygonMode::Fill,
+                            unclipped_depth: false,
+                            conservative: false,
+                            cull_mode: Some(Face::Back),
+                        },
+                        depth_stencil: None,
+                        multisample: MultisampleState {
+                            count: 1,
+                            mask: !0,
+                            alpha_to_coverage_enabled: false,
+                        },
+                        multiview: None,
+                    });
 
-        Ok(Self {
-            vertex_array: dummy_vao,
-            program,
+                *state.lock() = Some(State {
+                    pipeline,
+                    texture_bind_group_layout,
+                })
+            }
+        ))?;
+
+        Ok(Self { state })
+    }
+
+    pub fn create_texture_bind_group(
+        &self,
+        context: &DrawContext,
+        view: &TextureView,
+        sampler: &Sampler,
+    ) -> BindGroup {
+        context.device.create_bind_group(&BindGroupDescriptor {
+            layout: &self
+                .state
+                .lock()
+                .as_ref()
+                .expect("state should be available by now")
+                .texture_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+            label: Some("texture bind group for quad renderer"),
         })
     }
 
     pub fn draw(
         &self,
-        context: &DrawContext,
-        texture: GLuint,
+        _context: &DrawContext,
+        drawing_context: &DrawingContext,
+        encoder: &mut CommandEncoder,
+        bind_group: &BindGroup,
         pos_bounds: &[Vec2; 2],
         tex_bounds: &[Vec2; 2],
         radius: &Vec2,
         transform: &Mat3,
     ) {
-        let vao = self.vertex_array.get(context);
-        let program = self.program.get(context);
-
-        unsafe {
-            vao.bind();
-            gl::UseProgram(*program);
-
-            gl::Uniform2fv(
-                gl::GetUniformLocation(
-                    *program,
-                    CStr::from_bytes_with_nul_unchecked("pos_bounds\0".as_bytes()).as_ptr(),
-                ),
-                2,
-                pos_bounds.as_ptr() as *const _,
-            );
-            gl::Uniform2fv(
-                gl::GetUniformLocation(
-                    *program,
-                    CStr::from_bytes_with_nul_unchecked("tex_bounds\0".as_bytes()).as_ptr(),
-                ),
-                2,
-                tex_bounds.as_ptr() as *const _,
-            );
-            gl::Uniform1i(
-                gl::GetUniformLocation(
-                    *program,
-                    CStr::from_bytes_with_nul_unchecked("tex\0".as_bytes()).as_ptr(),
-                ),
+        if let Some(State { pipeline, .. }) = self.state.lock().as_ref() {
+            let mut render_pass =
+                drawing_context.begin_direct_render_pass(encoder, Some("quad renderer pass"));
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_bind_group(0, bind_group, &[]);
+            let quad = QuadPushConstants {
+                pos_bounds: *pos_bounds,
+                tex_bounds: *tex_bounds,
+                radius: *radius,
+                transform: *transform,
+                _padding: Default::default(),
+            };
+            render_pass.set_push_constants(
+                ShaderStages::VERTEX_FRAGMENT,
                 0,
+                bytemuck::bytes_of(&quad),
             );
-            gl::Uniform2f(
-                gl::GetUniformLocation(
-                    *program,
-                    CStr::from_bytes_with_nul_unchecked("radius\0".as_bytes()).as_ptr(),
-                ),
-                radius.x,
-                radius.y,
-            );
-            gl::UniformMatrix3fv(
-                gl::GetUniformLocation(
-                    *program,
-                    CStr::from_bytes_with_nul_unchecked("transform\0".as_bytes()).as_ptr(),
-                ),
-                1,
-                gl::FALSE,
-                transform as *const Mat3 as *const f32,
-            );
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+            render_pass.draw(0..4, 0..1);
         }
     }
 }

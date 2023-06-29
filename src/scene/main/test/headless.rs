@@ -5,7 +5,7 @@ use anyhow::Context;
 use crate::{
     enclose,
     exec::main_ctx::MainContext,
-    graphics::context::DrawContext,
+    graphics::context::{DrawContext, DrawingContext},
     scene::{Scene, SceneContainer},
     test::{
         assert::{assert_false, assert_unreachable},
@@ -71,7 +71,7 @@ impl Headless {
 }
 
 impl Scene for Headless {
-    fn draw(self: Arc<Self>, _ctx: &mut DrawContext) {
+    fn draw(self: Arc<Self>, _ctx: &mut DrawContext, _drawing: &DrawingContext) {
         self.no_draw.update(Self::test_not_draw())
     }
 }

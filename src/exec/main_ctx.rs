@@ -15,7 +15,7 @@ use winit::{
 use crate::{
     display::Display,
     events::{GameEvent, GameUserEvent},
-    graphics::{context::DrawContext, wrappers::vertex_array::VertexArrayHandle},
+    graphics::context::DrawContext,
     scene::main::RootScene,
     test::TestManager,
     ui::{EventContext, Widget},
@@ -35,7 +35,6 @@ pub struct MainContext {
     pub test_logs: HashMap<Cow<'static, str>, String>,
     pub test_manager: Option<Arc<TestManager>>,
     pub executor: GameServerExecutor,
-    pub dummy_vao: VertexArrayHandle,
     pub task_executor: TaskExecutor,
     pub channels: ServerChannels,
     pub dispatch_list: DispatchList,
@@ -48,14 +47,13 @@ impl MainContext {
         executor: GameServerExecutor,
         display: Display,
         event_loop_proxy: EventLoopProxy<GameUserEvent>,
-        mut channels: ServerChannels,
+        channels: ServerChannels,
     ) -> anyhow::Result<Self> {
         let mut slf = Self {
             executor,
             test_manager: args()
                 .test
                 .then(|| TestManager::new(event_loop_proxy.clone())),
-            dummy_vao: VertexArrayHandle::new(&mut channels.draw, "dummy vertex array")?,
             task_executor: TaskExecutor::new(),
             display,
             event_loop_proxy,

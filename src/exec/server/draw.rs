@@ -1,6 +1,6 @@
 use crate::{
     events::GameUserEvent,
-    graphics::context::{DrawContext, SendDrawContext},
+    graphics::context::DrawContext,
     scene::main::RootScene,
     utils::{
         error::ResultExt,
@@ -8,7 +8,6 @@ use crate::{
     },
 };
 use anyhow::{anyhow, Context};
-use glutin::config::Config;
 use trait_set::trait_set;
 use winit::event_loop::EventLoopProxy;
 
@@ -29,11 +28,6 @@ pub struct Server {
     pub root_scene: Option<RootScene>,
 }
 
-pub struct SendServer {
-    pub context: SendDrawContext,
-    pub root_scene: Option<RootScene>,
-}
-
 impl GameServer for Server {
     fn run(&mut self, single: bool, runner_frequency: f64) -> anyhow::Result<()> {
         self.context
@@ -41,20 +35,16 @@ impl GameServer for Server {
     }
 
     fn to_send(self) -> anyhow::Result<SendGameServer> {
-        Ok(SendGameServer::Draw(Box::new(SendServer {
-            context: self.context.to_send()?,
-            root_scene: self.root_scene,
-        })))
+        Ok(SendGameServer::Draw(Box::new(self)))
     }
 }
 
-impl SendServer {
-    pub fn new(
+impl Server {
+    pub async fn new(
         proxy: EventLoopProxy<GameUserEvent>,
-        gl_config: Config,
         display: &crate::display::Display,
     ) -> anyhow::Result<(Self, ServerChannel)> {
-        let (context, channel) = SendDrawContext::new(proxy, gl_config, display)?;
+        let (context, channel) = DrawContext::new(proxy, display).await?;
         Ok((
             Self {
                 context,
@@ -62,13 +52,6 @@ impl SendServer {
             },
             channel,
         ))
-    }
-
-    pub fn to_nonsend(self) -> anyhow::Result<Server> {
-        Ok(Server {
-            context: self.context.to_nonsend()?,
-            root_scene: self.root_scene,
-        })
     }
 }
 
@@ -127,5 +110,5 @@ impl<T> ServerSendChannelExt for T where T: GameServerSendChannel<RecvMsg> {}
 #[test]
 fn test_send_sync() {
     use crate::assert_send;
-    assert_send!(SendServer);
+    assert_send!(Server);
 }

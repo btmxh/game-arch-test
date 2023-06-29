@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use trait_set::trait_set;
 
-use crate::{events::GameEvent, exec::main_ctx::MainContext, graphics::context::DrawContext};
+use crate::{
+    events::GameEvent,
+    exec::main_ctx::MainContext,
+    graphics::context::{DrawContext, DrawingContext},
+};
 
 use self::main::RootScene;
 
@@ -77,7 +81,7 @@ pub trait Scene: Send + Sync {
         Some(event)
     }
 
-    fn draw(self: Arc<Self>, _ctx: &mut DrawContext) {}
+    fn draw(self: Arc<Self>, _ctx: &mut DrawContext, _drawing: &DrawingContext) {}
 }
 
 impl Scene for SceneContainer {
@@ -98,9 +102,9 @@ impl Scene for SceneContainer {
         Some(event)
     }
 
-    fn draw(self: Arc<Self>, ctx: &mut DrawContext) {
+    fn draw(self: Arc<Self>, ctx: &mut DrawContext, drawing: &DrawingContext) {
         for scene in self.scenes.iter() {
-            scene.clone().draw(ctx);
+            scene.clone().draw(ctx, drawing);
         }
     }
 }

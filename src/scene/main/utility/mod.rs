@@ -5,7 +5,6 @@ use crate::{
     events::GameEvent,
 };
 pub mod close;
-pub mod error;
 pub mod freq_profile;
 pub mod update_delay_test;
 pub mod vsync;
@@ -15,7 +14,6 @@ pub struct Scene {
     freq_profile: freq_profile::Scene,
     update_delay_test: update_delay_test::ArcScene,
     close: close::Scene,
-    error: error::Scene,
 }
 
 impl Scene {
@@ -25,7 +23,6 @@ impl Scene {
             freq_profile: freq_profile::Scene::new(),
             update_delay_test: update_delay_test::Scene::new(),
             close: close::Scene,
-            error: error::Scene,
         })
     }
 
@@ -41,7 +38,6 @@ impl Scene {
             .clone()
             .handle_event(context, event)?;
         let event = self.close.handle_event(context, event)?;
-        let event = self.error.handle_event(context, event)?;
         Some(event)
     }
 }

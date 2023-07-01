@@ -4,11 +4,11 @@ use raw_window_handle::{
 };
 use winit::{
     dpi::PhysicalSize,
-    event_loop::EventLoopWindowTarget,
+    event_loop::{EventLoop, EventLoopProxy, EventLoopWindowTarget},
     window::{Window, WindowBuilder, WindowId},
 };
 
-use crate::utils::args::args;
+use crate::{events::GameUserEvent, utils::args::args};
 
 pub struct Display {
     window: Window,
@@ -16,6 +16,11 @@ pub struct Display {
 
 pub struct SendRawHandle(pub RawWindowHandle, pub RawDisplayHandle);
 unsafe impl Send for SendRawHandle {}
+
+#[derive(Clone)]
+pub struct EventSender {
+    loop_proxy: EventLoopProxy<GameUserEvent>,
+}
 
 impl Display {
     pub fn new_display<T>(
@@ -64,5 +69,19 @@ impl Display {
 
     pub fn get_winit_window(&self) -> &Window {
         &self.window
+    }
+}
+
+impl EventSender {
+    pub fn new(event_loop: &EventLoop<GameUserEvent>) -> Self {
+        Self {
+            loop_proxy: event_loop.create_proxy(),
+        }
+    }
+    pub fn send_event(&self, event: GameUserEvent) -> anyhow::Result<()> {
+        self.loop_proxy
+            .send_event(event)
+            .map_err(|err| anyhow::anyhow!("{}", err))
+            .context("Unable to send event to main event loop")
     }
 }

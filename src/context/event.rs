@@ -1,4 +1,5 @@
 use crate::{
+    display::EventSender,
     exec::{
         dispatch::{DispatchList, DispatchMsg, EventDispatch},
         executor::GameServerExecutor,
@@ -6,40 +7,34 @@ use crate::{
         task::TaskExecutor,
     },
     scene::main::RootScene,
+    test::manager::{new_test_manager, RealArcTestManager},
     utils::error::ResultExt,
 };
 
 use std::{
-    borrow::Cow,
-    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use anyhow::Context;
 use tracing_appender::non_blocking::WorkerGuard;
-use winit::{
-    event::Event,
-    event_loop::{EventLoop, EventLoopProxy},
-};
+use winit::{event::Event, event_loop::EventLoop};
 
 use crate::{
     context::draw::DrawDispatch,
     display::Display,
     events::{GameEvent, GameUserEvent},
-    test::TestManager,
-    utils::{args::args, mpsc},
+    utils::mpsc,
 };
 
 use super::draw::DrawDispatchContext;
 
 pub struct EventContext {
-    pub test_logs: HashMap<Cow<'static, str>, String>,
-    pub test_manager: Option<Arc<TestManager>>,
+    pub test_manager: RealArcTestManager,
     pub task_executor: TaskExecutor,
     pub channels: ServerChannels,
     pub dispatch_list: DispatchList,
-    pub event_loop_proxy: EventLoopProxy<GameUserEvent>,
+    pub event_sender: EventSender,
     pub display: Display,
 }
 
@@ -47,7 +42,7 @@ impl EventContext {
     #[allow(clippy::type_complexity)]
     pub fn new(
         display: Display,
-        event_loop_proxy: EventLoopProxy<GameUserEvent>,
+        event_sender: EventSender,
     ) -> anyhow::Result<(
         Self,
         mpsc::Receiver<draw::Message>,
@@ -57,45 +52,26 @@ impl EventContext {
         let (draw_sender, draw_receiver) = mpsc::channels();
         let (audio_sender, audio_receiver) = mpsc::channels();
         let (update_sender, update_receiver) = mpsc::channels();
+        let mut dispatch_list = DispatchList::new();
 
-        let mut slf = Self {
-            test_manager: args()
-                .test
-                .then(|| TestManager::new(event_loop_proxy.clone())),
-            task_executor: TaskExecutor::new(),
-            display,
-            event_loop_proxy,
-            dispatch_list: DispatchList::new(),
-            channels: ServerChannels {
-                audio: audio_sender,
-                draw: draw_sender,
-                update: update_sender,
+        Ok((
+            Self {
+                test_manager: new_test_manager(&update_sender, &mut dispatch_list, &event_sender)
+                    .context("unable to create test manager")?,
+                task_executor: TaskExecutor::new(),
+                display,
+                event_sender,
+                dispatch_list,
+                channels: ServerChannels {
+                    audio: audio_sender,
+                    draw: draw_sender,
+                    update: update_sender,
+                },
             },
-            test_logs: HashMap::new(),
-        };
-
-        if let Some(test_manager) = slf.test_manager.as_ref() {
-            let test_manager = test_manager.clone();
-            slf.set_timeout(Duration::from_secs(30), move |_| {
-                test_manager.set_timeout_func();
-            })
-            .context("unable to set test timeout")?;
-        }
-
-        Ok((slf, draw_receiver, audio_receiver, update_receiver))
-    }
-
-    pub fn get_test_log(&mut self, name: &str) -> &mut String {
-        if !self.test_logs.contains_key(name) {
-            self.test_logs
-                .insert(Cow::Owned(name.to_owned()), String::new());
-        }
-
-        self.test_logs.get_mut(name).unwrap()
-    }
-
-    pub fn pop_test_log(&mut self, name: &str) -> String {
-        self.test_logs.remove(name).unwrap_or_default()
+            draw_receiver,
+            audio_receiver,
+            update_receiver,
+        ))
     }
 
     pub fn handle_event(
@@ -119,10 +95,6 @@ impl EventContext {
 
             Event::UserEvent(GameUserEvent::Execute(callback)) => {
                 callback(EventDispatchContext::new(executor, self, root_scene));
-            }
-
-            Event::UserEvent(GameUserEvent::Error(e)) => {
-                tracing::error!("GameUserEvent::Error caught: {}", e);
             }
 
             event => {

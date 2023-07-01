@@ -4,10 +4,10 @@ use std::{
 };
 
 use anyhow::Context;
-use winit::event_loop::EventLoopProxy;
 
 use super::{BaseGameServer, GameServer, SendGameServer};
 use crate::{
+    display::EventSender,
     events::GameUserEvent,
     exec::dispatch::DispatchMsg,
     utils::{
@@ -59,7 +59,7 @@ impl GameServer for Server {
         });
         if !done_timeouts.is_empty() {
             self.base
-                .proxy
+                .event_sender
                 .send_event(GameUserEvent::Dispatch(DispatchMsg::ExecuteDispatch(
                     done_timeouts,
                 )))
@@ -74,9 +74,9 @@ impl GameServer for Server {
 }
 
 impl Server {
-    pub fn new(proxy: EventLoopProxy<GameUserEvent>, receiver: Receiver<Message>) -> Self {
+    pub fn new(event_sender: EventSender, receiver: Receiver<Message>) -> Self {
         Self {
-            base: BaseGameServer::new(proxy, receiver),
+            base: BaseGameServer::new(event_sender, receiver),
             timeouts: HashMap::new(),
         }
     }

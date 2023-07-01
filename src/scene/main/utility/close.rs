@@ -21,7 +21,7 @@ impl Scene {
             } if context.event.display.get_window_id() == *window_id => {
                 context
                     .event
-                    .event_loop_proxy
+                    .event_sender
                     .send_event(GameUserEvent::Exit(0))
                     .map_err(|e| anyhow::format_err!("{}", e))
                     .context("unable to send event to event loop")

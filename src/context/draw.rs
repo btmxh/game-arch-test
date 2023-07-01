@@ -1,5 +1,5 @@
 use crate::{
-    events::GameUserEvent,
+    display::{Display, EventSender},
     exec::{
         dispatch::Dispatch,
         server::{draw::Message, BaseGameServer},
@@ -14,11 +14,11 @@ use anyhow::Context;
 use trait_set::trait_set;
 use wgpu::{
     Adapter, Backends, CommandEncoder, Device, DeviceDescriptor, Features, Instance,
-    InstanceDescriptor, Limits, Operations, PowerPreference, PresentMode, Queue, RenderPass,
+    InstanceDescriptor, Limits, PowerPreference, PresentMode, Queue, RenderPass,
     RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, Surface,
     SurfaceConfiguration, SurfaceTexture, TextureUsages, TextureView,
 };
-use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
+use winit::dpi::PhysicalSize;
 
 use crate::display::SendRawHandle;
 
@@ -49,10 +49,8 @@ impl FrameContext {
         encoder.begin_render_pass(&RenderPassDescriptor {
             color_attachments: &[Some(RenderPassColorAttachment {
                 view: &self.surface_texture_view,
+                ops: Default::default(),
                 resolve_target: None,
-                ops: Operations {
-                    ..Default::default()
-                },
             })],
             depth_stencil_attachment: None,
             label,
@@ -62,11 +60,11 @@ impl FrameContext {
 
 impl GraphicsContext {
     pub async fn new(
-        proxy: EventLoopProxy<GameUserEvent>,
-        display: &crate::display::Display,
+        event_sender: EventSender,
+        display: &Display,
         receiver: Receiver<Message>,
     ) -> anyhow::Result<Self> {
-        let base = BaseGameServer::new(proxy, receiver);
+        let base = BaseGameServer::new(event_sender, receiver);
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
             ..Default::default()
@@ -135,19 +133,6 @@ impl GraphicsContext {
             test_logs: HashMap::new(),
             transform_stack: TransformStack::default(),
         })
-    }
-
-    pub fn get_test_log(&mut self, name: &str) -> &mut String {
-        if !self.test_logs.contains_key(name) {
-            self.test_logs
-                .insert(Cow::Owned(name.to_owned()), String::new());
-        }
-
-        self.test_logs.get_mut(name).unwrap()
-    }
-
-    pub fn pop_test_log(&mut self, name: &str) -> String {
-        self.test_logs.remove(name).unwrap_or_default()
     }
 
     fn reconfigure(&mut self) {

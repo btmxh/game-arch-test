@@ -16,17 +16,17 @@ pub struct Scene {
 
 impl Scene {
     pub fn new(context: &mut InitContext) -> anyhow::Result<Self> {
-        let node = &context
+        let node = context
             .event
             .test_manager
             .as_ref()
             .expect("TestManager must exist in test mode")
-            .root
+            .root()
             .clone();
         let slf = Self {
-            headless: headless::Scene::new(context, node)
+            headless: headless::Scene::new(context, &node)
                 .context("unable to create Headless test scene")?,
-            timeout_delay: timeout_delay::Scene::new(context, node)
+            timeout_delay: timeout_delay::Scene::new(context, &node)
                 .context("unable to initiate TimeoutDelay tests")?,
         };
 

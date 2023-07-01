@@ -87,7 +87,7 @@ impl Scene {
         .log_error();
         context.root_scene.handle_event(
             context,
-            GameEvent::UserEvent(GameUserEvent::CheckedResize { display_size }),
+            GameEvent::UserEvent(GameUserEvent::CheckedResize(display_size)),
         );
     }
 

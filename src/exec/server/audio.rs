@@ -1,8 +1,7 @@
 use anyhow::Context;
-use winit::event_loop::EventLoopProxy;
 
 use crate::{
-    events::GameUserEvent,
+    display::EventSender,
     utils::mpsc::{self, Sender},
 };
 
@@ -39,9 +38,9 @@ impl GameServer for Server {
 }
 
 impl Server {
-    pub fn new(proxy: EventLoopProxy<GameUserEvent>, receiver: mpsc::Receiver<Message>) -> Self {
+    pub fn new(event_sender: EventSender, receiver: mpsc::Receiver<Message>) -> Self {
         Self {
-            base: BaseGameServer::new(proxy, receiver),
+            base: BaseGameServer::new(event_sender, receiver),
         }
     }
 }

@@ -28,7 +28,7 @@ impl Scene {
         Some(event)
     }
 
-    pub fn draw(&self, ctx: &mut DrawContext) {
-        self.clear.draw(ctx);
+    pub fn draw(&self, context: &mut DrawContext) {
+        self.clear.draw(context);
     }
 }

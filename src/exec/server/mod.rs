@@ -1,12 +1,11 @@
 use crate::{
-    events::GameUserEvent,
+    display::EventSender,
     utils::{
         frequency_runner::FrequencyProfiler,
         mpsc::{Receiver, Sender},
     },
 };
 use rand::{thread_rng, Rng};
-use winit::event_loop::EventLoopProxy;
 
 pub mod audio;
 pub mod draw;
@@ -17,7 +16,7 @@ pub enum BaseSendMsg {
 }
 
 pub struct BaseGameServer<Message> {
-    pub proxy: EventLoopProxy<GameUserEvent>,
+    pub event_sender: EventSender,
     pub receiver: Receiver<Message>,
     pub frequency_profiling: bool,
     pub frequency_profiler: FrequencyProfiler,
@@ -68,10 +67,10 @@ impl SendGameServer {
 }
 
 impl<Message> BaseGameServer<Message> {
-    pub fn new(proxy: EventLoopProxy<GameUserEvent>, receiver: Receiver<Message>) -> Self {
+    pub fn new(event_sender: EventSender, receiver: Receiver<Message>) -> Self {
         Self {
             receiver,
-            proxy,
+            event_sender,
             frequency_profiler: FrequencyProfiler::default(),
             frequency_profiling: false,
             relative_frequency: 1.0,

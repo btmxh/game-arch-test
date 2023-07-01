@@ -7,7 +7,7 @@ use std::{
 use anyhow::Context;
 
 use crate::{
-    exec::main_ctx::MainContext,
+    context::init::InitContext,
     test::{
         assert::{assert_greater_equals, assert_less_equals},
         result::TestResult,
@@ -17,34 +17,38 @@ use crate::{
 
 const MAX_DELAY: Duration = Duration::from_millis(100);
 
-pub fn test(main_ctx: &mut MainContext, node: &Arc<ParentTestNode>) -> anyhow::Result<()> {
-    let node = node.new_child_parent("set_timeout_delay");
+pub struct Scene;
 
-    let mut test = |timeout: Duration, name: &'static str| -> anyhow::Result<()> {
-        let test_node = node.new_child_leaf(name);
-        let now = Instant::now();
+impl Scene {
+    pub fn new(context: &mut InitContext, node: &Arc<ParentTestNode>) -> anyhow::Result<Self> {
+        let node = node.new_child_parent("set_timeout_delay");
 
-        fn do_test(elapsed: Duration, timeout: Duration) -> TestResult {
-            assert_greater_equals(&elapsed, &timeout, "elapsed must be greater than timeout")?;
-            let delay = elapsed.sub(timeout);
-            assert_less_equals(&delay, &MAX_DELAY, "more timeout delay than expected")?;
-            Ok(())
-        }
+        let mut test = |timeout: Duration, name: &'static str| -> anyhow::Result<()> {
+            let test_node = node.new_child_leaf(name);
+            let now = Instant::now();
 
-        main_ctx
-            .set_timeout(timeout, move |_, _| {
-                test_node.update(do_test(now.elapsed(), timeout));
+            fn do_test(elapsed: Duration, timeout: Duration) -> TestResult {
+                assert_greater_equals(&elapsed, &timeout, "elapsed must be greater than timeout")?;
+                let delay = elapsed.sub(timeout);
+                assert_less_equals(&delay, &MAX_DELAY, "more timeout delay than expected")?;
                 Ok(())
-            })
-            .context("unable to set timeout")?;
-        Ok(())
-    };
+            }
 
-    test(Duration::from_millis(100), "100ms")?;
-    test(Duration::from_secs(1), "1s")?;
-    test(Duration::from_millis(1500), "1.5s")?;
-    test(Duration::from_secs(3), "3s")?;
-    test(Duration::from_secs(5), "5s")?;
-    test(Duration::from_secs(10), "10s")?;
-    Ok(())
+            context
+                .event
+                .set_timeout(timeout, move |_| {
+                    test_node.update(do_test(now.elapsed(), timeout));
+                })
+                .context("unable to set timeout")?;
+            Ok(())
+        };
+
+        test(Duration::from_millis(100), "100ms")?;
+        test(Duration::from_secs(1), "1s")?;
+        test(Duration::from_millis(1500), "1.5s")?;
+        test(Duration::from_secs(3), "3s")?;
+        test(Duration::from_secs(5), "5s")?;
+        test(Duration::from_secs(10), "10s")?;
+        Ok(Self)
+    }
 }

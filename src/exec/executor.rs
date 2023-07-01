@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use crate::utils::error::ResultExt;
+use crate::{context::init::ExecutorInitArgs, utils::error::ResultExt};
 
 use super::{
     runner::{
@@ -65,6 +65,7 @@ impl GameServerExecutor {
     }
 
     pub fn new(
+        _: ExecutorInitArgs,
         audio: audio::Server,
         draw: draw::Server,
         update: update::Server,

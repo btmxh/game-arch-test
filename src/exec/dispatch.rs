@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use trait_set::trait_set;
 
-use crate::{scene::main::RootScene, utils::uid::Uid};
-
-use super::main_ctx::MainContext;
+use crate::{context::event::EventDispatchContext, utils::uid::Uid};
 
 trait_set! {
-    pub trait EventDispatch = FnOnce(&mut MainContext, &mut RootScene) -> anyhow::Result<()>;
+    pub trait NonSendDispatch<T> = FnOnce(T) + 'static;
+    pub trait Dispatch<T> = NonSendDispatch<T> + Send + 'static;
+    pub trait EventDispatch = for <'a> NonSendDispatch<EventDispatchContext<'a>>;
 }
 
 #[derive(Default)]

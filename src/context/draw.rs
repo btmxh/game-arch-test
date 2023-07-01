@@ -1,19 +1,17 @@
 use crate::{
     events::GameUserEvent,
-    exec::server::{
-        draw::{RecvMsg, SendMsg, ServerChannel},
-        BaseGameServer,
+    exec::{
+        dispatch::Dispatch,
+        server::{draw::Message, BaseGameServer},
     },
-    scene::{
-        main::{core::clear::Clear, RootScene},
-        Scene,
-    },
-    ui::utils::geom::UISize,
-    utils::args::args,
+    graphics::transform_stack::TransformStack,
+    scene::main::RootScene,
+    utils::{args::args, mpsc::Receiver},
 };
-use std::{borrow::Cow, collections::HashMap, num::NonZeroU32, sync::Arc, time::Duration};
+use std::{borrow::Cow, collections::HashMap, num::NonZeroU32, time::Duration};
 
 use anyhow::Context;
+use trait_set::trait_set;
 use wgpu::{
     Adapter, Backends, CommandEncoder, Device, DeviceDescriptor, Features, Instance,
     InstanceDescriptor, Limits, Operations, PowerPreference, PresentMode, Queue, RenderPass,
@@ -24,9 +22,8 @@ use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 
 use crate::display::SendRawHandle;
 
-use super::transform_stack::TransformStack;
-
-pub struct DrawContext {
+pub struct GraphicsContext {
+    pub base: BaseGameServer<Message>,
     pub test_logs: HashMap<Cow<'static, str>, String>,
     pub transform_stack: TransformStack,
     pub instance: Instance,
@@ -35,16 +32,15 @@ pub struct DrawContext {
     pub device: Device,
     pub queue: Queue,
     pub surface_configuration: SurfaceConfiguration,
-    pub ui_size: UISize,
     pub display_handles: SendRawHandle,
-    pub base: BaseGameServer<SendMsg, RecvMsg>,
 }
 
-pub struct DrawingContext {
+pub struct FrameContext {
     pub surface_texture: SurfaceTexture,
     pub surface_texture_view: TextureView,
 }
-impl DrawingContext {
+
+impl FrameContext {
     pub fn begin_direct_render_pass<'a>(
         &'a self,
         encoder: &'a mut CommandEncoder,
@@ -64,12 +60,13 @@ impl DrawingContext {
     }
 }
 
-impl DrawContext {
+impl GraphicsContext {
     pub async fn new(
         proxy: EventLoopProxy<GameUserEvent>,
         display: &crate::display::Display,
-    ) -> anyhow::Result<(Self, ServerChannel)> {
-        let (base, sender, receiver) = BaseGameServer::new(proxy);
+        receiver: Receiver<Message>,
+    ) -> anyhow::Result<Self> {
+        let base = BaseGameServer::new(proxy, receiver);
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
             ..Default::default()
@@ -126,26 +123,18 @@ impl DrawContext {
             view_formats: vec![],
         };
         surface.configure(&device, &surface_configuration);
-        let ui_size = display
-            .get_size()
-            .to_logical(display.get_scale_factor())
-            .into();
-        Ok((
-            Self {
-                base,
-                display_handles: display.get_raw_handles(),
-                ui_size,
-                instance,
-                surface,
-                adapter,
-                device,
-                queue,
-                surface_configuration,
-                test_logs: HashMap::new(),
-                transform_stack: TransformStack::default(),
-            },
-            ServerChannel { sender, receiver },
-        ))
+        Ok(Self {
+            base,
+            display_handles: display.get_raw_handles(),
+            instance,
+            surface,
+            adapter,
+            device,
+            queue,
+            surface_configuration,
+            test_logs: HashMap::new(),
+            transform_stack: TransformStack::default(),
+        })
     }
 
     pub fn get_test_log(&mut self, name: &str) -> &mut String {
@@ -172,11 +161,7 @@ impl DrawContext {
         Ok(())
     }
 
-    fn process_messages(
-        &mut self,
-        block: bool,
-        root_scene: &mut Option<RootScene>,
-    ) -> anyhow::Result<()> {
+    fn process_messages(&mut self, block: bool, root_scene: &RootScene) -> anyhow::Result<()> {
         let messages = self
             .base
             .receiver
@@ -185,16 +170,15 @@ impl DrawContext {
             .collect::<Vec<_>>();
         for message in messages {
             match message {
-                RecvMsg::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
-                RecvMsg::Execute(callback) => callback(self, root_scene),
+                Message::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
+                Message::Execute(callback) => callback(DrawDispatchContext::new(self, root_scene)),
             }
         }
 
         Ok(())
     }
 
-    pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>, ui_size: UISize) {
-        self.ui_size = ui_size;
+    pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>) {
         self.surface_configuration.width = new_size.width.get();
         self.surface_configuration.height = new_size.height.get();
         self.reconfigure();
@@ -202,7 +186,7 @@ impl DrawContext {
 
     pub fn draw(
         &mut self,
-        root_scene: &mut Option<RootScene>,
+        root_scene: &RootScene,
         single: bool,
         runner_frequency: f64,
     ) -> anyhow::Result<()> {
@@ -210,23 +194,55 @@ impl DrawContext {
         self.base.run("Draw", runner_frequency);
         self.process_messages(single && headless, root_scene)?;
         if !headless {
-            let output = self
-                .surface
-                .get_current_texture()
-                .context("Unable to retrieve surface texture")?;
-            let view = output.texture.create_view(&Default::default());
-            let drawing_context = DrawingContext {
-                surface_texture: output,
-                surface_texture_view: view,
-            };
-
-            if let Some(root_scene) = root_scene {
-                root_scene.draw(self, &drawing_context);
-            } else {
-                Arc::new(Clear).draw(self, &drawing_context);
+            let mut frame = self
+                .get_frame_context()
+                .context("Unable to retrieve frame context to render")?;
+            {
+                let mut draw_context = DrawContext::new(self, &mut frame);
+                root_scene.draw(&mut draw_context);
             }
-            drawing_context.surface_texture.present();
+            frame.surface_texture.present();
         }
         Ok(())
     }
+
+    fn get_frame_context(&self) -> anyhow::Result<FrameContext> {
+        let surface_texture = self
+            .surface
+            .get_current_texture()
+            .context("Unable to retrieve current surface texture")?;
+        Ok(FrameContext {
+            surface_texture_view: surface_texture.texture.create_view(&Default::default()),
+            surface_texture,
+        })
+    }
+}
+
+pub struct DrawContext<'a> {
+    pub graphics: &'a mut GraphicsContext,
+    pub frame: &'a mut FrameContext,
+}
+
+impl<'a> DrawContext<'a> {
+    pub fn new(graphics: &'a mut GraphicsContext, frame: &'a mut FrameContext) -> Self {
+        Self { graphics, frame }
+    }
+}
+
+pub struct DrawDispatchContext<'a> {
+    pub graphics: &'a mut GraphicsContext,
+    pub root_scene: &'a RootScene,
+}
+
+impl<'a> DrawDispatchContext<'a> {
+    pub fn new(graphics: &'a mut GraphicsContext, root_scene: &'a RootScene) -> Self {
+        Self {
+            graphics,
+            root_scene,
+        }
+    }
+}
+
+trait_set! {
+    pub trait DrawDispatch = for <'a> Dispatch<DrawDispatchContext<'a>>;
 }

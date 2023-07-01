@@ -3,10 +3,8 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context;
 
 use crate::{
+    context::{draw::DrawContext, init::InitContext},
     enclose,
-    exec::main_ctx::MainContext,
-    graphics::context::{DrawContext, DrawingContext},
-    scene::{Scene, SceneContainer},
     test::{
         assert::{assert_false, assert_unreachable},
         result::TestResult,
@@ -15,46 +13,43 @@ use crate::{
     utils::args::args,
 };
 
-pub struct Headless {
+pub struct Scene {
     no_draw: Arc<LeafTestNode>,
 }
 
-impl Headless {
-    #[allow(clippy::new_ret_no_self)]
-    #[allow(unused_mut)]
+impl Scene {
     pub fn new(
-        main_ctx: &mut MainContext,
+        context: &mut InitContext,
         node: &Arc<ParentTestNode>,
-    ) -> anyhow::Result<SceneContainer> /* acts as an Option<Self> */ {
+    ) -> anyhow::Result<Option<Self>> {
         if !args().headless {
-            return Ok(SceneContainer::new());
+            return Ok(None);
         }
 
-        let mut container = SceneContainer::new();
         let node = node.new_child_parent("headless");
         node.new_child_leaf("not_visible")
-            .update(Self::test_not_visible(main_ctx));
+            .update(Self::test_not_visible(context));
 
         let no_draw = node.new_child_leaf("no_draw");
-        main_ctx
+        context
+            .event
             .set_timeout(
                 Duration::from_secs(5),
-                enclose!((no_draw) move |_, _| {
+                enclose!((no_draw) move |_| {
                     if !no_draw.finished() {
                         no_draw.update(Ok(()));
                     }
-                    Ok(())
                 }),
             )
             .context("unable to set timeout for no_draw test")?;
 
-        container.push(Self { no_draw });
-        Ok(container)
+        Ok(Some(Self { no_draw }))
     }
 
-    fn test_not_visible(main_ctx: &mut MainContext) -> TestResult {
+    fn test_not_visible(context: &mut InitContext) -> TestResult {
         assert_false(
-            main_ctx
+            context
+                .event
                 .display
                 .get_winit_window()
                 .is_visible()
@@ -68,10 +63,8 @@ impl Headless {
         assert_unreachable("Scene::draw() should not be called in headless mode")?;
         Ok(())
     }
-}
 
-impl Scene for Headless {
-    fn draw(self: Arc<Self>, _ctx: &mut DrawContext, _drawing: &DrawingContext) {
+    pub fn draw(&self, _draw: &mut DrawContext) {
         self.no_draw.update(Self::test_not_draw())
     }
 }

@@ -6,7 +6,7 @@ use std::{
 use anyhow::Context;
 use winit::event_loop::EventLoopProxy;
 
-use super::{BaseGameServer, GameServer, GameServerChannel, GameServerSendChannel, SendGameServer};
+use super::{BaseGameServer, GameServer, SendGameServer};
 use crate::{
     events::GameUserEvent,
     exec::dispatch::DispatchMsg,
@@ -16,15 +16,14 @@ use crate::{
     },
 };
 
-pub enum SendMsg {}
-pub enum RecvMsg {
+pub enum Message {
     SetFrequencyProfiling(bool),
     SetTimeout(Instant, Uid),
     CancelTimeout(Uid),
 }
 
 pub struct Server {
-    pub base: BaseGameServer<SendMsg, RecvMsg>,
+    pub base: BaseGameServer<Message>,
     pub timeouts: HashMap<Uid, Instant>,
 }
 
@@ -38,13 +37,13 @@ impl GameServer for Server {
             .context("thread runner channel was unexpectedly closed")?;
         for message in messages {
             match message {
-                RecvMsg::SetTimeout(inst, id) => {
+                Message::SetTimeout(inst, id) => {
                     self.timeouts.insert(id, inst);
                 }
-                RecvMsg::CancelTimeout(id) => {
+                Message::CancelTimeout(id) => {
                     self.timeouts.remove(&id);
                 }
-                RecvMsg::SetFrequencyProfiling(fp) => {
+                Message::SetFrequencyProfiling(fp) => {
                     self.base.frequency_profiling = fp;
                 }
             };
@@ -75,48 +74,27 @@ impl GameServer for Server {
 }
 
 impl Server {
-    pub fn new(proxy: EventLoopProxy<GameUserEvent>) -> (Self, ServerChannel) {
-        let (base, sender, receiver) = BaseGameServer::new(proxy);
-        (
-            Self {
-                base,
-                timeouts: HashMap::new(),
-            },
-            ServerChannel { sender, receiver },
-        )
+    pub fn new(proxy: EventLoopProxy<GameUserEvent>, receiver: Receiver<Message>) -> Self {
+        Self {
+            base: BaseGameServer::new(proxy, receiver),
+            timeouts: HashMap::new(),
+        }
     }
 }
 
-pub struct ServerChannel {
-    sender: Sender<RecvMsg>,
-    receiver: Receiver<SendMsg>,
-}
-
-impl GameServerChannel<SendMsg, RecvMsg> for ServerChannel {
-    fn receiver(&mut self) -> &mut Receiver<SendMsg> {
-        &mut self.receiver
-    }
-}
-
-impl GameServerSendChannel<RecvMsg> for ServerChannel {
-    fn sender(&self) -> &Sender<RecvMsg> {
-        &self.sender
-    }
-}
-
-impl ServerChannel {
+impl Sender<Message> {
     pub fn set_timeout(&self, duration: Duration, id: Uid) -> anyhow::Result<()> {
-        self.send(RecvMsg::SetTimeout(Instant::now() + duration, id))
+        self.send(Message::SetTimeout(Instant::now() + duration, id))
             .context("unable to send timeout request")
     }
 
     pub fn cancel_timeout(&self, id: Uid) -> anyhow::Result<()> {
-        self.send(RecvMsg::CancelTimeout(id))
+        self.send(Message::CancelTimeout(id))
             .context("unable to send cancel timeout request")
     }
 
     pub fn set_frequency_profiling(&self, fp: bool) -> anyhow::Result<()> {
-        self.send(RecvMsg::SetFrequencyProfiling(fp))
+        self.send(Message::SetFrequencyProfiling(fp))
             .context("unable to send frequency profiling request")
     }
 }

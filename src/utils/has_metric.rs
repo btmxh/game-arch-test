@@ -1,4 +1,4 @@
-use crate::ui::utils::geom::{UIPos, UIRect, UISize};
+use glam::Vec2;
 
 // used for floating-point comparison
 // for types consist of multiple f32/f64, use the maximum metric for consistency
@@ -35,27 +35,9 @@ impl HasDistance for f64 {
     }
 }
 
-impl HasDistance for UIPos {
+impl HasDistance for Vec2 {
     fn distance(&self, other: &Self) -> f32 {
         f32::max(self.x.distance(&other.x), self.y.distance(&other.y))
-    }
-}
-
-impl HasDistance for UISize {
-    fn distance(&self, other: &Self) -> f32 {
-        f32::max(
-            self.width.distance(&other.width),
-            self.height.distance(&other.height),
-        )
-    }
-}
-
-impl HasDistance for UIRect {
-    fn distance(&self, other: &Self) -> f32 {
-        f32::max(
-            self.pos.distance(&other.pos),
-            self.size.distance(&other.size),
-        )
     }
 }
 

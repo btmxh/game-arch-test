@@ -1,7 +1,5 @@
 use glam::{Affine2, Vec2};
 
-use crate::ui::utils::geom::UIPos;
-
 #[derive(Default)]
 pub struct TransformStack(Vec<Affine2>);
 
@@ -35,8 +33,8 @@ impl TransformStack {
         *current = *current * *transform;
     }
 
-    pub fn translate(&mut self, offset: UIPos) {
-        self.peek_mut().translation += Vec2::from(offset);
+    pub fn translate(&mut self, offset: Vec2) {
+        self.peek_mut().translation += offset;
     }
 
     pub fn clear(&mut self) {

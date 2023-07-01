@@ -2,7 +2,7 @@
 macro_rules! enclose {
     ( ($( $x:ident ),*) $y:expr ) => {
         {
-            $(let mut $x = $x.clone();)*
+            $(let $x = $x.clone();)*
             $y
         }
     };

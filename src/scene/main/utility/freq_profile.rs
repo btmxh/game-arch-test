@@ -3,22 +3,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Context;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
-use crate::{
-    events::GameEvent,
-    exec::{main_ctx::MainContext, server::draw::ServerSendChannelExt},
-    scene::{main::RootScene, Scene},
-    utils::error::ResultExt,
-};
+use crate::{context::event::EventHandleContext, events::GameEvent, utils::error::ResultExt};
 
-pub struct FreqProfile {
+pub struct Scene {
     current_freq_profile: AtomicBool,
 }
 
-impl Scene for FreqProfile {
-    fn handle_event<'a>(
-        self: std::sync::Arc<Self>,
-        ctx: &mut MainContext,
-        _: &RootScene,
+impl Scene {
+    pub fn new() -> Self {
+        Self {
+            current_freq_profile: AtomicBool::new(false),
+        }
+    }
+
+    pub fn handle_event<'a>(
+        &self,
+        context: &mut EventHandleContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match &event {
@@ -34,8 +34,8 @@ impl Scene for FreqProfile {
                             },
                         ..
                     },
-            } if ctx.display.get_window_id() == *window_id => {
-                self.toggle(ctx)
+            } if context.event.display.get_window_id() == *window_id => {
+                self.toggle(context)
                     .context("unable to toggle frequency profile mode")
                     .log_error();
             }
@@ -45,28 +45,23 @@ impl Scene for FreqProfile {
 
         Some(event)
     }
-}
 
-impl FreqProfile {
-    pub fn new() -> Self {
-        Self {
-            current_freq_profile: AtomicBool::new(false),
-        }
-    }
-
-    pub fn toggle(&self, main_ctx: &mut MainContext) -> anyhow::Result<()> {
+    fn toggle(&self, context: &mut EventHandleContext) -> anyhow::Result<()> {
         let current_freq_profile = !self.current_freq_profile.load(Ordering::Relaxed);
         self.current_freq_profile
             .store(current_freq_profile, Ordering::Relaxed);
-        main_ctx
+        context
+            .event
             .channels
             .update
             .set_frequency_profiling(current_freq_profile)?;
-        main_ctx
+        context
+            .event
             .channels
             .draw
             .set_frequency_profiling(current_freq_profile)?;
-        main_ctx
+        context
+            .event
             .channels
             .audio
             .set_frequency_profiling(current_freq_profile)?;
@@ -75,7 +70,7 @@ impl FreqProfile {
     }
 }
 
-impl Default for FreqProfile {
+impl Default for Scene {
     fn default() -> Self {
         Self::new()
     }

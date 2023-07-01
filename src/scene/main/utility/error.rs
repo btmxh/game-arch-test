@@ -1,22 +1,24 @@
 use winit::event::Event;
 
 use crate::{
+    context::event::EventHandleContext,
     events::{GameEvent, GameUserEvent},
-    exec::main_ctx::MainContext,
-    scene::main::RootScene,
 };
 
-pub fn handle_event<'a>(
-    _: &mut MainContext,
-    _: &RootScene,
-    event: GameEvent<'a>,
-) -> Option<GameEvent<'a>> {
-    match event {
-        Event::UserEvent(GameUserEvent::Error(error)) => {
-            tracing::error!("GameUserEvent::Error caught: {}", error);
-            None
-        }
+pub struct Scene;
+impl Scene {
+    pub fn handle_event<'a>(
+        &self,
+        _: &mut EventHandleContext,
+        event: GameEvent<'a>,
+    ) -> Option<GameEvent<'a>> {
+        match event {
+            Event::UserEvent(GameUserEvent::Error(error)) => {
+                tracing::error!("GameUserEvent::Error caught: {}", error);
+                None
+            }
 
-        event => Some(event),
+            event => Some(event),
+        }
     }
 }

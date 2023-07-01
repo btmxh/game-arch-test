@@ -2,10 +2,9 @@ use crate::{
     events::GameUserEvent,
     utils::{
         frequency_runner::FrequencyProfiler,
-        mpsc::{self, Receiver, Sender},
+        mpsc::{Receiver, Sender},
     },
 };
-use anyhow::Context;
 use rand::{thread_rng, Rng};
 use winit::event_loop::EventLoopProxy;
 
@@ -17,63 +16,27 @@ pub enum BaseSendMsg {
     SetRelativeFrequency(f64),
 }
 
-pub struct BaseGameServer<SendMsg, RecvMsg> {
-    pub sender: Sender<SendMsg>,
+pub struct BaseGameServer<Message> {
     pub proxy: EventLoopProxy<GameUserEvent>,
-    pub receiver: Receiver<RecvMsg>,
+    pub receiver: Receiver<Message>,
     pub frequency_profiling: bool,
     pub frequency_profiler: FrequencyProfiler,
     pub relative_frequency: f64,
     pub timer: f64,
 }
 
-pub trait GameServerSendChannel<RecvMsg> {
-    fn sender(&self) -> &Sender<RecvMsg>;
-    fn send(&self, message: RecvMsg) -> anyhow::Result<()> {
-        self.sender()
-            .send(message)
-            .map_err(|e| anyhow::format_err!("{}", e))
-            .context(
-                "unable to send message to (local) game server (the server was probably closed)",
-            )
-    }
-
-    fn clone_sender(&self) -> ServerSendChannel<RecvMsg> {
-        ServerSendChannel(self.sender().clone())
-    }
-}
-
-pub trait GameServerChannel<SendMsg, RecvMsg>: GameServerSendChannel<RecvMsg> {
-    fn receiver(&mut self) -> &mut Receiver<SendMsg>;
-
-    fn recv(&mut self) -> anyhow::Result<SendMsg> {
-        self.receiver().recv().context(
-            "unable to receive message from (local) game server (the server was probably closed)",
-        )
-    }
-}
-
-pub struct ServerSendChannel<RecvMsg>(Sender<RecvMsg>);
-
-impl<RecvMsg> GameServerSendChannel<RecvMsg> for ServerSendChannel<RecvMsg> {
-    fn sender(&self) -> &Sender<RecvMsg> {
-        &self.0
-    }
-}
-
 pub struct ServerChannels {
-    pub audio: audio::ServerChannel,
-    pub draw: draw::ServerChannel,
-    pub update: update::ServerChannel,
+    pub audio: Sender<audio::Message>,
+    pub draw: Sender<draw::Message>,
+    pub update: Sender<update::Message>,
 }
 
-impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
-    pub fn send(&self, message: SendMsg) -> anyhow::Result<()> {
-        self.sender
-            .send(message)
-            .map_err(|e| anyhow::format_err!("{}", e))
-            .context("Unable to send message from (local) game server (the main event loop receiver was closed)")
-    }
+impl<Message> BaseGameServer<Message> {
+    // pub fn send(&self, _message: Message) -> anyhow::Result<()> {
+    // todo!()
+    // self.proxy.send_event(GameUserEvent::FromServerMessage(message))
+    // .context("Unable to send message from (local) game server (the main event loop receiver was closed)")
+    // }
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -104,23 +67,16 @@ impl SendGameServer {
     }
 }
 
-impl<SendMsg, RecvMsg> BaseGameServer<SendMsg, RecvMsg> {
-    pub fn new(proxy: EventLoopProxy<GameUserEvent>) -> (Self, Sender<RecvMsg>, Receiver<SendMsg>) {
-        let (send_sender, send_receiver) = mpsc::channels();
-        let (recv_sender, recv_receiver) = mpsc::channels();
-        (
-            Self {
-                receiver: recv_receiver,
-                sender: send_sender,
-                proxy,
-                frequency_profiler: FrequencyProfiler::default(),
-                frequency_profiling: false,
-                relative_frequency: 1.0,
-                timer: 0.0,
-            },
-            recv_sender,
-            send_receiver,
-        )
+impl<Message> BaseGameServer<Message> {
+    pub fn new(proxy: EventLoopProxy<GameUserEvent>, receiver: Receiver<Message>) -> Self {
+        Self {
+            receiver,
+            proxy,
+            frequency_profiler: FrequencyProfiler::default(),
+            frequency_profiling: false,
+            relative_frequency: 1.0,
+            timer: 0.0,
+        }
     }
 
     pub fn run(&mut self, server_name: &str, intended_frequency: f64) -> usize {

@@ -1,5 +1,3 @@
-#![feature(result_flattening)]
-
 use anyhow::Context;
 use context::{draw::GraphicsContext, event::EventContext, init::InitContext};
 use display::Display;

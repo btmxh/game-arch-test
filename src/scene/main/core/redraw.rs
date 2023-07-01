@@ -34,7 +34,7 @@ impl Scene {
                             .execute_draw_sync(|context| {
                                 context.graphics.draw(context.root_scene, false, 0.0)
                             })
-                            .flatten()
+                            .and_then(|x| x) // flatten()
                             .context("error triggering redraw in draw server")
                             .log_warn();
                     }

@@ -22,29 +22,30 @@ pub struct Server {
 
 impl GameServer for Server {
     fn run(&mut self, _: bool, runner_frequency: f64) -> anyhow::Result<()> {
-        self.base.run("Update", runner_frequency);
-        let messages = self
-            .base
-            .receiver
-            .try_iter(None)
-            .context("thread runner channel was unexpectedly closed")?;
-        for message in messages {
-            match message {
-                Message::SetTimeout(timeout_instant, id) => {
-                    self.context.set_timeout(timeout_instant, id);
-                }
-                Message::CancelTimeout(handle) => {
-                    self.context.cancel_timeout(handle);
-                }
-                Message::SetFrequencyProfiling(fp) => {
-                    self.base.frequency_profiling = fp;
-                }
-            };
-        }
+        for _ in 0..self.base.run("Update", runner_frequency) {
+            let messages = self
+                .base
+                .receiver
+                .try_iter(None)
+                .context("thread runner channel was unexpectedly closed")?;
+            for message in messages {
+                match message {
+                    Message::SetTimeout(timeout_instant, id) => {
+                        self.context.set_timeout(timeout_instant, id);
+                    }
+                    Message::CancelTimeout(handle) => {
+                        self.context.cancel_timeout(handle);
+                    }
+                    Message::SetFrequencyProfiling(fp) => {
+                        self.base.frequency_profiling = fp;
+                    }
+                };
+            }
 
-        self.context
-            .update(&self.base)
-            .context("Error while updating update server")?;
+            self.context
+                .update(&self.base)
+                .context("Error while updating update server")?;
+        }
         Ok(())
     }
     fn to_send(self) -> anyhow::Result<SendGameServer> {

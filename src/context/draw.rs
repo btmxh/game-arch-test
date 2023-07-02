@@ -118,17 +118,18 @@ impl GraphicsContext {
         runner_frequency: f64,
     ) -> anyhow::Result<()> {
         let headless = args().headless;
-        self.base.run("Draw", runner_frequency);
-        self.process_messages(single && headless, root_scene)?;
-        if !headless {
-            let mut frame = self
-                .get_frame_context()
-                .context("Unable to retrieve frame context to render")?;
-            {
-                let mut draw_context = DrawContext::new(self, &mut frame);
-                root_scene.draw(&mut draw_context);
+        for _ in 0..self.base.run("Draw", runner_frequency) {
+            self.process_messages(single && headless, root_scene)?;
+            if !headless {
+                let mut frame = self
+                    .get_frame_context()
+                    .context("Unable to retrieve frame context to render")?;
+                {
+                    let mut draw_context = DrawContext::new(self, &mut frame);
+                    root_scene.draw(&mut draw_context);
+                }
+                frame.surface_texture.present();
             }
-            frame.surface_texture.present();
         }
         Ok(())
     }

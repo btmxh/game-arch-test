@@ -17,16 +17,17 @@ pub struct Server {
 
 impl GameServer for Server {
     fn run(&mut self, _: bool, runner_frequency: f64) -> anyhow::Result<()> {
-        self.base.run("Audio", runner_frequency);
-        let messages = self
-            .base
-            .receiver
-            .try_iter(None)
-            .context("thread runner channel was unexpectedly closed")?;
-        for message in messages {
-            match message {
-                Message::SetFrequencyProfiling(fp) => {
-                    self.base.frequency_profiling = fp;
+        for _ in 0..self.base.run("Audio", runner_frequency) {
+            let messages = self
+                .base
+                .receiver
+                .try_iter(None)
+                .context("thread runner channel was unexpectedly closed")?;
+            for message in messages {
+                match message {
+                    Message::SetFrequencyProfiling(fp) => {
+                        self.base.frequency_profiling = fp;
+                    }
                 }
             }
         }

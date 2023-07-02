@@ -70,6 +70,7 @@ impl<Message> BaseGameServer<Message> {
         }
     }
 
+    #[must_use]
     pub fn run(&mut self, server_name: &str, intended_frequency: f64) -> usize {
         if let Some(frequency) = self.frequency_profiler.update_and_get_frequency() {
             if self.frequency_profiling && thread_rng().gen::<f64>() * frequency < 1.0 {

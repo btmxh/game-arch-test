@@ -5,7 +5,7 @@ use anyhow::Context;
 
 use crate::{
     context::draw::DrawContext,
-    context::{event::EventHandleContext, init::InitContext},
+    context::{event::EventDispatchContext, init::InitContext},
     events::GameEvent,
     utils::args::args,
 };
@@ -20,8 +20,7 @@ pub struct RootScene {
     handle_resize: handle_resize::ArcScene,
     core: core::Scene,
     test: Option<test::Scene>,
-    #[allow(dead_code)]
-    content: Option<content::Scene>,
+    _content: Option<content::Scene>,
     utility: utility::Scene,
 }
 
@@ -35,14 +34,14 @@ impl RootScene {
                 .then(|| test::Scene::new(context))
                 .transpose()
                 .context("unable to initialize test scene")?,
-            content: args().test.not().then(content::Scene::new),
+            _content: args().test.not().then(content::Scene::new),
             utility: utility::Scene::new(context).context("unable to initialize utility scene")?,
         }))
     }
 
     pub fn handle_event<'a>(
         &self,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         let event = self.handle_resize.clone().handle_event(context, event)?;

@@ -1,7 +1,4 @@
 use anyhow::Context;
-use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
 use winit::{
     dpi::PhysicalSize,
     event_loop::{EventLoop, EventLoopProxy, EventLoopWindowTarget},
@@ -14,16 +11,13 @@ pub struct Display {
     window: Window,
 }
 
-pub struct SendRawHandle(pub RawWindowHandle, pub RawDisplayHandle);
-unsafe impl Send for SendRawHandle {}
-
 #[derive(Clone)]
 pub struct EventSender {
     loop_proxy: EventLoopProxy<GameUserEvent>,
 }
 
 impl Display {
-    pub fn new_display<T>(
+    pub fn new<T>(
         event_loop: &EventLoopWindowTarget<T>,
         size: PhysicalSize<u32>,
         title: &str,
@@ -41,18 +35,6 @@ impl Display {
                 .build(event_loop)
                 .context("unable to create display")?,
         })
-    }
-
-    pub fn get_raw_window_handle(&self) -> RawWindowHandle {
-        self.window.raw_window_handle()
-    }
-
-    pub fn get_raw_display_handle(&self) -> RawDisplayHandle {
-        self.window.raw_display_handle()
-    }
-
-    pub fn get_raw_handles(&self) -> SendRawHandle {
-        SendRawHandle(self.get_raw_window_handle(), self.get_raw_display_handle())
     }
 
     pub fn get_window_id(&self) -> WindowId {

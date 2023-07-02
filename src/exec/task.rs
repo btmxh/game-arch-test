@@ -8,14 +8,19 @@ use std::{
     time::Duration,
 };
 
-use crate::utils::{error::ResultExt, mpsc};
+use crate::{
+    enclose,
+    utils::{error::ResultExt, mpsc},
+};
 
+use anyhow::Context;
 use executors::{
     crossbeam_workstealing_pool::{small_pool, ThreadPool},
     parker::{SmallThreadData, StaticParker},
     Executor,
 };
 
+#[derive(Clone)]
 pub struct TaskExecutor(ManuallyDrop<ThreadPool<StaticParker<SmallThreadData>>>);
 
 #[derive(Clone)]
@@ -51,15 +56,17 @@ where
 
 impl Drop for TaskExecutor {
     fn drop(&mut self) {
-        unsafe { ManuallyDrop::take(&mut self.0) }
-            .shutdown()
+        let executor = unsafe { ManuallyDrop::take(&mut self.0) };
+        std::thread::spawn(enclose!((executor) move || {
+            executor.shutdown()
             .map_err(|e| anyhow::format_err!("error shutdown TaskExecutor: {e}"))
             .log_error();
+        }));
     }
 }
 
 impl<R> TaskHandle<R> {
-    pub fn as_drop_handle(self) -> DropTaskHandle<R> {
+    pub fn into_drop_handle(self) -> DropTaskHandle<R> {
         DropTaskHandle(self)
     }
 }
@@ -93,6 +100,21 @@ impl TaskExecutor {
         F: FnOnce() + Send + 'static,
     {
         self.0.execute(callback)
+    }
+
+    pub fn execute_return<F, R>(&self, callback: F) -> JoinToken<R>
+    where
+        R: Send + 'static,
+        F: FnOnce() -> R + Send + 'static,
+    {
+        let (sender, token) = JoinToken::new();
+        self.execute(move || {
+            sender
+                .send(callback())
+                .context("Unable to execute task")
+                .log_error();
+        });
+        token
     }
 }
 

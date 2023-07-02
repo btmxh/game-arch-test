@@ -9,7 +9,6 @@ use super::{BaseGameServer, GameServer, SendGameServer};
 use crate::{
     display::EventSender,
     events::GameUserEvent,
-    exec::dispatch::DispatchMsg,
     utils::{
         mpsc::{Receiver, Sender},
         uid::Uid,
@@ -60,9 +59,7 @@ impl GameServer for Server {
         if !done_timeouts.is_empty() {
             self.base
                 .event_sender
-                .send_event(GameUserEvent::Dispatch(DispatchMsg::ExecuteDispatch(
-                    done_timeouts,
-                )))
+                .send_event(GameUserEvent::UpdateDispatch(done_timeouts))
                 .map_err(|e| anyhow::format_err!("{}", e))
                 .context("unable to send event to event loop")?;
         }

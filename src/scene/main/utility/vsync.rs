@@ -5,7 +5,7 @@ use wgpu::PresentMode;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 use crate::{
-    context::{event::EventHandleContext, init::InitContext},
+    context::{event::EventDispatchContext, init::InitContext},
     events::GameEvent,
     utils::error::ResultExt,
 };
@@ -31,7 +31,7 @@ impl Scene {
 
     pub fn handle_event<'a>(
         &self,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match &event {
@@ -59,7 +59,7 @@ impl Scene {
         Some(event)
     }
 
-    fn toggle(&self, context: &EventHandleContext) -> anyhow::Result<()> {
+    fn toggle(&self, context: &EventDispatchContext) -> anyhow::Result<()> {
         let current_vsync = !self.current_vsync.load(Ordering::Relaxed);
         self.current_vsync.store(current_vsync, Ordering::Relaxed);
         let interval = if current_vsync {
@@ -67,12 +67,8 @@ impl Scene {
         } else {
             PresentMode::AutoNoVsync
         };
-        context.event.channels.draw.execute(move |context| {
-            context
-                .graphics
-                .set_swap_interval(interval)
-                .with_context(|| format!("unable to set vsync swap interval to {interval:?}"))
-                .log_error();
+        context.event.draw_sender.execute(move |context| {
+            context.graphics.set_swap_interval(interval);
             tracing::info!("VSync swap interval set to {interval:?}");
         })?;
 

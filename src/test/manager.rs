@@ -9,26 +9,26 @@ use std::{
 use anyhow::Context;
 
 use crate::{
+    context::update::UpdateSender,
     display::EventSender,
     events::GameUserEvent,
-    exec::{dispatch::DispatchList, server::update},
-    utils::{args::args, error::ResultExt, mpsc::Sender, mutex::Mutex},
+    utils::{args::args, error::ResultExt, mutex::Mutex},
 };
 
 use super::tree::ParentTestNode;
 
-pub struct TestManager {
+struct TestManagerInner {
     pub root: Arc<ParentTestNode>,
     event_sender: Mutex<EventSender>,
     done_init: AtomicBool,
 }
 
-pub struct ArcTestManager {
-    inner: Arc<TestManager>,
+pub struct TestManager {
+    inner: Arc<TestManagerInner>,
     // logs: HashMap<Cow<'static, str>, String>,
 }
 
-pub type RealArcTestManager = Option<ArcTestManager>;
+pub type OptionTestManager = Option<TestManager>;
 
 enum TestExitCode {
     Complete = 0,
@@ -36,28 +36,26 @@ enum TestExitCode {
     Timeout = 2,
 }
 
-pub fn new_test_manager(
-    update_sender: &Sender<update::Message>,
-    dispatch_list: &mut DispatchList,
-    event_sender: &EventSender,
-) -> anyhow::Result<RealArcTestManager> {
-    args()
-        .test
-        .then(|| ArcTestManager::new(update_sender, dispatch_list, event_sender.clone()))
-        .transpose()
-}
-
-impl ArcTestManager {
+impl TestManager {
     const TEST_TIMEOUT: Duration = Duration::new(30, 0);
+    pub fn new_if_enabled(
+        update_sender: &mut UpdateSender,
+        event_sender: &EventSender,
+    ) -> anyhow::Result<OptionTestManager> {
+        args()
+            .test
+            .then(|| TestManager::new(update_sender, event_sender.clone()))
+            .transpose()
+    }
+
     pub fn new(
-        update_sender: &Sender<update::Message>,
-        dispatch_list: &mut DispatchList,
+        update_sender: &mut UpdateSender,
         event_sender: EventSender,
     ) -> anyhow::Result<Self> {
         let slf = Self {
-            inner: Arc::<TestManager>::new_cyclic(|weak| {
+            inner: Arc::<TestManagerInner>::new_cyclic(|weak| {
                 let weak = weak.clone();
-                TestManager {
+                TestManagerInner {
                     event_sender: Mutex::new(event_sender),
                     root: ParentTestNode::new_root("root", move |_, result| {
                         if let Some(slf) = weak.upgrade() {
@@ -86,9 +84,8 @@ impl ArcTestManager {
         };
 
         let inner = slf.inner.clone();
-        let uid = dispatch_list.push(move |_| inner.set_timeout_func());
         update_sender
-            .set_timeout(Self::TEST_TIMEOUT, uid)
+            .set_timeout(Self::TEST_TIMEOUT, move |_| inner.set_timeout_func())
             .context("unable to set test timeout")?;
 
         Ok(slf)
@@ -114,7 +111,7 @@ impl ArcTestManager {
     }
 }
 
-impl TestManager {
+impl TestManagerInner {
     pub fn set_timeout_func(&self) {
         let result = self.root.result.lock();
         let exit_code = match *result {

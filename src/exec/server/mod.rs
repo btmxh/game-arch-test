@@ -30,14 +30,6 @@ pub struct ServerChannels {
     pub update: Sender<update::Message>,
 }
 
-impl<Message> BaseGameServer<Message> {
-    // pub fn send(&self, _message: Message) -> anyhow::Result<()> {
-    // todo!()
-    // self.proxy.send_event(GameUserEvent::FromServerMessage(message))
-    // .context("Unable to send message from (local) game server (the main event loop receiver was closed)")
-    // }
-}
-
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ServerKind {
     Audio,

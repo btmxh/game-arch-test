@@ -1,7 +1,7 @@
 use anyhow::Context;
 
 use crate::{
-    context::{event::EventHandleContext, init::InitContext},
+    context::{event::EventDispatchContext, init::InitContext},
     events::GameEvent,
 };
 pub mod close;
@@ -28,7 +28,7 @@ impl Scene {
 
     pub fn handle_event<'a>(
         &self,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         let event = self.vsync.handle_event(context, event)?;

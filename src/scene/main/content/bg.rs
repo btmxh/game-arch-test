@@ -158,7 +158,6 @@ impl Background {
         Ok(slf)
     }
 
-    #[allow(unused_mut)]
     fn init_test_texture(
         self: &Arc<Self>,
         main_ctx: &mut MainContext,

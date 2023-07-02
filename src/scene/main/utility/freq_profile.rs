@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Context;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
-use crate::{context::event::EventHandleContext, events::GameEvent, utils::error::ResultExt};
+use crate::{context::event::EventDispatchContext, events::GameEvent, utils::error::ResultExt};
 
 pub struct Scene {
     current_freq_profile: AtomicBool,
@@ -18,7 +18,7 @@ impl Scene {
 
     pub fn handle_event<'a>(
         &self,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match &event {
@@ -46,24 +46,21 @@ impl Scene {
         Some(event)
     }
 
-    fn toggle(&self, context: &mut EventHandleContext) -> anyhow::Result<()> {
+    fn toggle(&self, context: &mut EventDispatchContext) -> anyhow::Result<()> {
         let current_freq_profile = !self.current_freq_profile.load(Ordering::Relaxed);
         self.current_freq_profile
             .store(current_freq_profile, Ordering::Relaxed);
         context
             .event
-            .channels
-            .update
+            .update_sender
             .set_frequency_profiling(current_freq_profile)?;
         context
             .event
-            .channels
-            .draw
+            .draw_sender
             .set_frequency_profiling(current_freq_profile)?;
         context
             .event
-            .channels
-            .audio
+            .audio_sender
             .set_frequency_profiling(current_freq_profile)?;
 
         Ok(())

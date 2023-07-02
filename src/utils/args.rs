@@ -1,4 +1,4 @@
-use std::mem::MaybeUninit;
+use std::sync::OnceLock;
 
 use clap::Parser;
 use tracing::Level;
@@ -6,16 +6,6 @@ use tracing::Level;
 /// A Rust rhythm game architecture test
 #[derive(Parser, Debug)]
 pub struct Args {
-    /// Whether or not to enable OpenGL debug callback
-    #[arg(long)]
-    pub gl_disable_debug_callback: bool,
-    /// Index to select OpenGL config, if not provided, the system will
-    /// automatically choose the most suitable config
-    #[arg(long)]
-    pub gl_config_index: Option<usize>,
-    /// Whether or not to select OpenGL config with sRGB capabilities
-    #[arg(long)]
-    pub gl_disable_srgb: bool,
     /// Log level, use this to turn off unnecessary log messages
     #[arg(long, default_value_t = Level::TRACE)]
     pub log_level: Level,
@@ -67,15 +57,10 @@ pub struct Args {
     pub auto_run_tests: bool,
 }
 
-static mut STATIC_ARGS: MaybeUninit<Args> = MaybeUninit::uninit();
-
-pub fn parse_args() {
-    let args = Args::parse();
-    unsafe { STATIC_ARGS = MaybeUninit::new(args) };
-}
+static ARGS: OnceLock<Args> = OnceLock::new();
 
 pub fn args() -> &'static Args {
-    unsafe { STATIC_ARGS.assume_init_ref() }
+    ARGS.get_or_init(Args::parse)
 }
 
 fn default_block_event_loop() -> bool {

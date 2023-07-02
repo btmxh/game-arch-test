@@ -16,7 +16,6 @@ trait_set! {
     pub trait OnCompleteCallback<C> = Fn(&GenericTestNode<C>, &TestResult) + Send + Sync;
 }
 
-#[allow(clippy::type_complexity)]
 pub struct GenericTestNode<C> {
     parent: Option<Weak<ParentTestNode>>,
     name: Cow<'static, str>,

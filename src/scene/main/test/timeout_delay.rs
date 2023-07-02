@@ -36,6 +36,7 @@ impl Scene {
 
             context
                 .event
+                .update_sender
                 .set_timeout(timeout, move |_| {
                     test_node.update(do_test(now.elapsed(), timeout));
                 })

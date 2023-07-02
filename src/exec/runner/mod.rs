@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 
 use crate::utils::{
     clock::SteadyClock,
@@ -184,13 +184,12 @@ impl ServerMover for MainRunner {
 }
 
 impl ServerMover for ThreadRunnerHandle {
-    #[allow(irrefutable_let_patterns)]
     fn take_server(&mut self, kind: ServerKind) -> anyhow::Result<Option<SendGameServer>> {
         self.send(ToRunnerMsg::RequestServer(kind))
             .context("unable to request server from runner thread")?;
         let sent = Instant::now();
         let mut warn = false;
-        if let FromRunnerMsg::MoveServer(server) = loop {
+        match loop {
             if let Some(msg) = self
                 .recv()
                 .context("unable to receive server from runner thread")?
@@ -203,9 +202,7 @@ impl ServerMover for ThreadRunnerHandle {
                 tracing::warn!("taking server taking an unexpectedly long amount of time...");
             }
         } {
-            Ok(server)
-        } else {
-            bail!("invalid thread runner response")
+            FromRunnerMsg::MoveServer(server) => Ok(server),
         }
     }
 

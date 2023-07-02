@@ -2,7 +2,6 @@ use std::time::Duration;
 
 pub mod args;
 pub mod clock;
-pub mod debug_handle;
 pub mod enclose;
 pub mod error;
 pub mod frequency_runner;

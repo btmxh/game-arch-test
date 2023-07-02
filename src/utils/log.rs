@@ -8,7 +8,9 @@ use tracing_subscriber::{fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFi
 
 use crate::utils::args::args;
 
-pub fn init_log() -> anyhow::Result<Option<WorkerGuard>> {
+pub type LogGuard = Option<WorkerGuard>;
+
+pub fn init_log() -> anyhow::Result<LogGuard> {
     let collector = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive(args().log_level.into()))
         .with(fmt::Layer::new().with_writer(io::stdout));

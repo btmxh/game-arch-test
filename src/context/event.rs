@@ -1,14 +1,12 @@
 use crate::{
     display::EventSender,
     exec::{
-        dispatch::{DispatchList, DispatchMsg, EventDispatch},
         executor::GameServerExecutor,
-        server::{audio, draw, update, ServerChannels},
-        task::TaskExecutor,
+        server::{audio, draw, update},
     },
     scene::main::RootScene,
-    test::manager::{new_test_manager, RealArcTestManager},
-    utils::error::ResultExt,
+    test::manager::{OptionTestManager, TestManager},
+    utils::{error::ResultExt, mpsc::Sender},
 };
 
 use std::{
@@ -17,8 +15,11 @@ use std::{
 };
 
 use anyhow::Context;
-use tracing_appender::non_blocking::WorkerGuard;
-use winit::{event::Event, event_loop::EventLoop};
+use winit::{
+    dpi::PhysicalSize,
+    event::Event,
+    event_loop::{EventLoop, EventLoopBuilder},
+};
 
 use crate::{
     context::draw::DrawDispatch,
@@ -27,47 +28,49 @@ use crate::{
     utils::mpsc,
 };
 
-use super::draw::DrawDispatchContext;
+use super::{common::SharedCommonContext, draw::DrawDispatchContext, update::UpdateSender};
 
 pub struct EventContext {
-    pub test_manager: RealArcTestManager,
-    pub task_executor: TaskExecutor,
-    pub channels: ServerChannels,
-    pub dispatch_list: DispatchList,
+    pub common: SharedCommonContext,
+    pub test_manager: OptionTestManager,
     pub event_sender: EventSender,
+    pub audio_sender: Sender<audio::Message>,
+    pub draw_sender: Sender<draw::Message>,
+    pub update_sender: UpdateSender,
     pub display: Display,
 }
 
 impl EventContext {
     #[allow(clippy::type_complexity)]
     pub fn new(
-        display: Display,
-        event_sender: EventSender,
+        common: SharedCommonContext,
     ) -> anyhow::Result<(
         Self,
+        EventLoop<GameUserEvent>,
         mpsc::Receiver<draw::Message>,
         mpsc::Receiver<audio::Message>,
         mpsc::Receiver<update::Message>,
     )> {
+        let event_loop = EventLoopBuilder::with_user_event().build();
+        let event_sender = EventSender::new(&event_loop);
+        let display = Display::new(&event_loop, PhysicalSize::new(1280, 720), "hello")
+            .context("Unable to create display")?;
         let (draw_sender, draw_receiver) = mpsc::channels();
         let (audio_sender, audio_receiver) = mpsc::channels();
-        let (update_sender, update_receiver) = mpsc::channels();
-        let mut dispatch_list = DispatchList::new();
+        let (mut update_sender, update_receiver) = UpdateSender::new();
 
         Ok((
             Self {
-                test_manager: new_test_manager(&update_sender, &mut dispatch_list, &event_sender)
+                common,
+                test_manager: TestManager::new_if_enabled(&mut update_sender, &event_sender)
                     .context("unable to create test manager")?,
-                task_executor: TaskExecutor::new(),
                 display,
                 event_sender,
-                dispatch_list,
-                channels: ServerChannels {
-                    audio: audio_sender,
-                    draw: draw_sender,
-                    update: update_sender,
-                },
+                audio_sender,
+                draw_sender,
+                update_sender,
             },
+            event_loop,
             draw_receiver,
             audio_receiver,
             update_receiver,
@@ -81,25 +84,19 @@ impl EventContext {
         event: GameEvent,
     ) -> anyhow::Result<()> {
         match event {
-            Event::UserEvent(GameUserEvent::Dispatch(msg)) => match msg {
-                DispatchMsg::ExecuteDispatch(ids) => {
-                    for dispatch in ids
-                        .into_iter()
-                        .filter_map(|id| self.dispatch_list.pop(id))
-                        .collect::<Vec<_>>()
-                    {
-                        dispatch(EventDispatchContext::new(executor, self, root_scene));
-                    }
+            Event::UserEvent(GameUserEvent::UpdateDispatch(ids)) => {
+                let callbacks = ids
+                    .into_iter()
+                    .filter_map(|id| self.update_sender.pop(id))
+                    .collect::<Vec<_>>();
+                for callback in callbacks {
+                    callback(EventDispatchContext::new(executor, self, root_scene));
                 }
-            },
-
-            Event::UserEvent(GameUserEvent::Execute(callback)) => {
-                callback(EventDispatchContext::new(executor, self, root_scene));
             }
 
             event => {
                 root_scene.handle_event(
-                    &mut EventHandleContext::new(executor, self, root_scene),
+                    &mut EventDispatchContext::new(executor, self, root_scene),
                     event,
                 );
             }
@@ -107,36 +104,11 @@ impl EventContext {
         Ok(())
     }
 
-    pub fn set_timeout(
-        &mut self,
-        timeout: Duration,
-        callback: impl EventDispatch,
-    ) -> anyhow::Result<()> {
-        let id = self.dispatch_list.push(callback);
-        self.channels.update.set_timeout(timeout, id)?;
-        Ok(())
-    }
-
-    pub fn execute_blocking_task<F>(&mut self, f: F)
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        self.task_executor.execute(f)
-    }
-
-    pub fn execute_draw_sync<F>(&mut self, _callback: F) -> anyhow::Result<()>
-    where
-        F: DrawDispatch,
-    {
-        todo!()
-    }
-
     pub fn run(
         mut self,
         mut executor: GameServerExecutor,
         event_loop: EventLoop<GameUserEvent>,
         root_scene: Arc<RootScene>,
-        guard: Option<WorkerGuard>,
     ) -> ! {
         use winit::event_loop::ControlFlow;
         event_loop.run(move |event, _target, control_flow| {
@@ -144,7 +116,6 @@ impl EventContext {
             fn unused<T>(_: &T) {}
             unused(&root_scene);
             unused(&self);
-            unused(&guard);
             match event {
                 Event::MainEventsCleared => {
                     executor
@@ -200,8 +171,6 @@ impl<'a> EventDispatchContext<'a> {
     }
 }
 
-pub type EventHandleContext<'a> = EventDispatchContext<'a>;
-
 pub trait Executable {
     fn executor(&mut self) -> &mut GameServerExecutor;
     fn event(&mut self) -> &mut EventContext;
@@ -210,7 +179,7 @@ pub trait Executable {
     where
         F: DrawDispatch,
     {
-        self.event().channels.draw.execute(callback)
+        self.event().draw_sender.execute(callback)
     }
 
     fn execute_draw_sync<F, R>(&mut self, callback: F) -> anyhow::Result<R>

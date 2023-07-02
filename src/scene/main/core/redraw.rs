@@ -2,7 +2,7 @@ use anyhow::Context;
 use winit::event::Event;
 
 use crate::{
-    context::event::{EventHandleContext, Executable},
+    context::event::{EventDispatchContext, Executable},
     events::GameEvent,
     utils::{args::args, error::ResultExt},
 };
@@ -12,7 +12,7 @@ pub struct Scene;
 impl Scene {
     pub fn handle_event<'a>(
         &self,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match event {

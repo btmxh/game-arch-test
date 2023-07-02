@@ -10,8 +10,7 @@ pub mod timeout_delay;
 
 pub struct Scene {
     headless: Option<headless::Scene>,
-    #[allow(dead_code)]
-    timeout_delay: timeout_delay::Scene,
+    _timeout_delay: timeout_delay::Scene,
 }
 
 impl Scene {
@@ -26,7 +25,7 @@ impl Scene {
         let slf = Self {
             headless: headless::Scene::new(context, &node)
                 .context("unable to create Headless test scene")?,
-            timeout_delay: timeout_delay::Scene::new(context, &node)
+            _timeout_delay: timeout_delay::Scene::new(context, &node)
                 .context("unable to initiate TimeoutDelay tests")?,
         };
 

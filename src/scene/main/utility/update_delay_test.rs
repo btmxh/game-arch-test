@@ -5,7 +5,7 @@ use rand::{thread_rng, Rng};
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 use crate::{
-    context::event::EventHandleContext,
+    context::event::EventDispatchContext,
     events::GameEvent,
     utils::{clock::debug_get_time, error::ResultExt, mutex::Mutex},
 };
@@ -31,24 +31,25 @@ impl Scene {
         })
     }
 
-    pub fn test(self: ArcScene, context: &mut EventHandleContext) -> anyhow::Result<()> {
+    pub fn test(self: ArcScene, context: &mut EventDispatchContext) -> anyhow::Result<()> {
         let time = debug_get_time();
         let test_duration = thread_rng().gen_range(5.0..10.0);
         tracing::info!("{}", time);
-        context
-            .event
-            .set_timeout(Duration::from_secs_f64(test_duration), move |_| {
+        context.event.update_sender.set_timeout(
+            Duration::from_secs_f64(test_duration),
+            move |_| {
                 let delay = debug_get_time() - time - test_duration;
                 let running_avg = self.delay.lock().add_delay(delay);
                 tracing::info!("delay: {}s, avg: {}s", delay, running_avg);
-            })?;
+            },
+        )?;
 
         Ok(())
     }
 
     pub fn handle_event<'a>(
         self: ArcScene,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match &event {

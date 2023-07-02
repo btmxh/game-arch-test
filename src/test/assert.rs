@@ -51,7 +51,7 @@ pub fn assert_less_than<T: PartialOrd + Debug + ?Sized>(
         Err(TestError::AssertCompareError {
             found: format!("{found:?}"),
             expected: format!("{expected:?}"),
-            comparison: Comparison::Equals,
+            comparison: Comparison::Less,
             compare_error: None,
             custom_msg: msg.into(),
         })

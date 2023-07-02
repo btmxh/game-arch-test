@@ -1,5 +1,5 @@
 use crate::{
-    context::{draw::DrawContext, event::EventHandleContext},
+    context::{draw::DrawContext, event::EventDispatchContext},
     events::GameEvent,
 };
 
@@ -21,7 +21,7 @@ impl Scene {
 
     pub fn handle_event<'a>(
         &self,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         let event = self.redraw.handle_event(context, event)?;

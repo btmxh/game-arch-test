@@ -33,6 +33,7 @@ impl Scene {
         let no_draw = node.new_child_leaf("no_draw");
         context
             .event
+            .update_sender
             .set_timeout(
                 Duration::from_secs(5),
                 enclose!((no_draw) move |_| {

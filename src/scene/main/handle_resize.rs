@@ -7,7 +7,7 @@ use winit::{
 };
 
 use crate::{
-    context::event::{EventDispatchContext, EventHandleContext, Executable},
+    context::event::{EventDispatchContext, Executable},
     events::{GameEvent, GameUserEvent},
     utils::{args::args, error::ResultExt, mutex::Mutex},
 };
@@ -38,7 +38,7 @@ impl Scene {
 
     pub fn handle_event<'a>(
         self: ArcScene,
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match event {
@@ -74,7 +74,7 @@ impl Scene {
     }
 
     fn resize(
-        context: &mut EventHandleContext,
+        context: &mut EventDispatchContext,
         display_size: PhysicalSize<NonZeroU32>,
         block: bool,
     ) {
@@ -107,9 +107,10 @@ impl Scene {
         Ok(())
     }
 
-    fn set_timeout(self: Arc<Self>, context: &mut EventHandleContext) -> anyhow::Result<()> {
+    fn set_timeout(self: Arc<Self>, context: &mut EventDispatchContext) -> anyhow::Result<()> {
         context
             .event
+            .update_sender
             .set_timeout(Self::THROTTLE_DURATION, move |mut context| {
                 self.resize_timeout_func(&mut context).log_error();
             })?;

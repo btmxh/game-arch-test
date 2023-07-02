@@ -4,7 +4,7 @@ use derivative::Derivative;
 
 use winit::dpi::PhysicalSize;
 
-use crate::exec::dispatch::{DispatchMsg, EventDispatch};
+use crate::utils::uid::Uid;
 
 pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
 
@@ -12,9 +12,7 @@ pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
 #[derivative(Debug)]
 pub enum GameUserEvent {
     Exit(i32),
-    Dispatch(DispatchMsg),
-    Execute(#[derivative(Debug = "ignore")] Box<dyn EventDispatch + Send>),
-    ExecuteReturn(ExecuteReturnEvent),
+    UpdateDispatch(Vec<Uid>),
     CheckedResize(PhysicalSize<NonZeroU32>),
 }
 

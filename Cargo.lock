@@ -767,6 +767,7 @@ dependencies = [
  "pollster",
  "rand",
  "raw-window-handle 0.5.0",
+ "smallvec",
  "static_assertions",
  "tracing",
  "tracing-appender",

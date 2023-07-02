@@ -4,7 +4,7 @@ use derivative::Derivative;
 
 use winit::dpi::PhysicalSize;
 
-use crate::utils::uid::Uid;
+use crate::context::update::TimeoutDispatchHandleSet;
 
 pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
 
@@ -12,7 +12,7 @@ pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
 #[derivative(Debug)]
 pub enum GameUserEvent {
     Exit(i32),
-    UpdateDispatch(Vec<Uid>),
+    UpdateDispatch(TimeoutDispatchHandleSet),
     CheckedResize(PhysicalSize<NonZeroU32>),
 }
 

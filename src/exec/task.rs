@@ -1,6 +1,7 @@
 use std::{
     marker::PhantomData,
     mem::ManuallyDrop,
+    num::NonZeroUsize,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -15,13 +16,12 @@ use crate::{
 
 use anyhow::Context;
 use executors::{
-    crossbeam_workstealing_pool::{small_pool, ThreadPool},
-    parker::{SmallThreadData, StaticParker},
+    crossbeam_workstealing_pool::{large_pool, ThreadPool},
+    parker::{LargeThreadData, StaticParker},
     Executor,
 };
 
-#[derive(Clone)]
-pub struct TaskExecutor(ManuallyDrop<ThreadPool<StaticParker<SmallThreadData>>>);
+pub struct TaskExecutor(ManuallyDrop<ThreadPool<StaticParker<LargeThreadData>>>);
 
 #[derive(Clone)]
 pub struct CancellationToken(Arc<AtomicBool>);
@@ -92,7 +92,12 @@ impl<R> JoinToken<R> {
 
 impl TaskExecutor {
     pub fn new() -> Self {
-        Self(ManuallyDrop::new(small_pool(4)))
+        Self(ManuallyDrop::new(large_pool(
+            std::thread::available_parallelism()
+                .map(NonZeroUsize::get)
+                .unwrap_or(4)
+                .min(LargeThreadData::MAX_THREADS),
+        )))
     }
 
     pub fn execute<F>(&self, callback: F)

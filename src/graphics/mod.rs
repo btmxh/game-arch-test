@@ -10,6 +10,8 @@ use winit::dpi::PhysicalSize;
 
 use crate::display::Display;
 
+use self::quad_renderer::QuadRenderer;
+
 pub mod quad_renderer;
 
 pub async fn init_wgpu(
@@ -42,8 +44,12 @@ pub async fn init_wgpu(
         .request_device(
             &DeviceDescriptor {
                 label: None,
-                features: Features::empty(),
-                limits: Limits::downlevel_defaults(),
+                features: Features::PUSH_CONSTANTS,
+                limits: Limits {
+                    max_push_constant_size: u32::try_from(QuadRenderer::MAX_PUSH_CONSTANT_SIZE)
+                        .expect("max push constant size too large to fit on an u32"),
+                    ..Limits::downlevel_defaults()
+                },
             },
             None,
         )

@@ -30,6 +30,7 @@ struct QuadPushConstants {
 impl QuadRenderer {
     pub const FULL_WINDOW_POS_BOUNDS: [Vec2; 2] = [Vec2::new(-1.0, -1.0), Vec2::new(1.0, 1.0)];
     pub const FULL_TEXTURE_TEX_BOUNDS: [Vec2; 2] = [Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0)];
+    pub const MAX_PUSH_CONSTANT_SIZE: usize = std::mem::size_of::<QuadPushConstants>();
 
     pub fn new(context: &GraphicsContext) -> anyhow::Result<Self> {
         let shader = context

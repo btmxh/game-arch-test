@@ -29,7 +29,7 @@ pub struct TimeoutDispatchHandle {
 pub type TimeoutDispatchHandleSet = SmallVec<[Uid; 2]>;
 
 pub struct UpdateContext {
-    dispatch_handles: BTreeMap<Instant, TimeoutDispatchHandleSet>,
+    dispatch_handles: BTreeMap<ReverseInstant, TimeoutDispatchHandleSet>,
 }
 
 struct ReverseInstant(Instant);
@@ -63,14 +63,15 @@ impl UpdateContext {
 
     pub fn set_timeout(&mut self, timeout_instant: Instant, id: Uid) {
         self.dispatch_handles
-            .entry(timeout_instant)
+            .entry(ReverseInstant(timeout_instant))
             .and_modify(|handles| handles.push(id))
             .or_insert_with(|| smallvec![id]);
     }
 
     pub fn cancel_timeout(&mut self, handle: TimeoutDispatchHandle) {
+        let timeout_instant = ReverseInstant(handle.timeout_instant);
         {
-            if let Some(id_set) = self.dispatch_handles.get_mut(&handle.timeout_instant) {
+            if let Some(id_set) = self.dispatch_handles.get_mut(&timeout_instant) {
                 if id_set.len() >= 2 {
                     let maybe_index = id_set.iter().position(|x| *x == handle.id);
                     // ordering may be important here
@@ -87,13 +88,13 @@ impl UpdateContext {
         }
 
         // most probable case
-        self.dispatch_handles.remove(&handle.timeout_instant);
+        self.dispatch_handles.remove(&timeout_instant);
     }
 
     pub fn update(&mut self, base: &BaseGameServer<update::Message>) -> anyhow::Result<()> {
         let handles = self
             .dispatch_handles
-            .split_off(&Instant::now())
+            .split_off(&ReverseInstant(Instant::now()))
             .into_values()
             .flatten()
             .collect::<TimeoutDispatchHandleSet>();

@@ -1,27 +1,40 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     context::draw::{DrawDispatch, GraphicsContext},
+    display::EventSender,
     scene::main::RootScene,
-    utils::mpsc::Sender,
+    utils::{
+        args::args,
+        mpsc::{Receiver, Sender},
+    },
 };
 use anyhow::Context;
 
-use super::{GameServer, SendGameServer};
+use super::{BaseGameServer, GameServer, SendGameServer};
 
 pub enum Message {
     SetFrequencyProfiling(bool),
     Execute(Box<dyn DrawDispatch>),
 }
 pub struct Server {
+    pub base: BaseGameServer<Message>,
     pub context: GraphicsContext,
     pub root_scene: Arc<RootScene>,
 }
 
 impl GameServer for Server {
     fn run(&mut self, single: bool, runner_frequency: f64) -> anyhow::Result<()> {
-        self.context
-            .draw(&self.root_scene, single, runner_frequency)
+        let headless = args().headless;
+        for _ in 0..self.base.run("Draw", runner_frequency) {
+            self.process_messages(single && headless)?;
+            if !headless {
+                self.context
+                    .draw(&self.root_scene)
+                    .context("error while drawing frame")?;
+            }
+        }
+        Ok(())
     }
 
     fn to_send(self) -> anyhow::Result<SendGameServer> {
@@ -30,11 +43,34 @@ impl GameServer for Server {
 }
 
 impl Server {
-    pub fn new(context: GraphicsContext, root_scene: Arc<RootScene>) -> anyhow::Result<Self> {
+    pub fn new(
+        event_sender: EventSender,
+        receiver: Receiver<Message>,
+        context: GraphicsContext,
+        root_scene: Arc<RootScene>,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
+            base: BaseGameServer::new(event_sender, receiver),
             context,
             root_scene,
         })
+    }
+
+    fn process_messages(&mut self, block: bool) -> anyhow::Result<()> {
+        let messages = self
+            .base
+            .receiver
+            .try_iter(block.then_some(Duration::from_millis(300)))
+            .context("thread runner channel was unexpectedly closed")?
+            .collect::<Vec<_>>();
+        for message in messages {
+            match message {
+                Message::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
+                Message::Execute(callback) => self.context.run_callback(callback, &self.root_scene),
+            }
+        }
+
+        Ok(())
     }
 }
 

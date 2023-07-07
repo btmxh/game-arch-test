@@ -25,14 +25,10 @@ fn main() -> anyhow::Result<()> {
     let _guard = init_log()?;
     let common_context = CommonContext::new();
     let (mut event_context, event_loop, draw_recv, audio_recv, update_recv) =
-        EventContext::new(common_context.clone()).context("Unable to initialize EventContext")?;
-    let mut graphics_context: GraphicsContext = pollster::block_on(GraphicsContext::new(
-        event_context.event_sender.clone(),
-        common_context,
-        &event_context.display,
-        draw_recv,
-    ))
-    .context("Unable to create graphics context")?;
+        EventContext::new(common_context).context("Unable to initialize EventContext")?;
+    let mut graphics_context: GraphicsContext = event_context
+        .create_graphics_context()
+        .context("Unable to create graphics context")?;
 
     let (root_scene, executor_args) = {
         let mut init_context = InitContext::new(&mut event_context, &mut graphics_context);
@@ -42,8 +38,13 @@ fn main() -> anyhow::Result<()> {
         )
     };
 
-    let draw = draw::Server::new(graphics_context, root_scene.clone())
-        .context("unable to initialize draw server")?;
+    let draw = draw::Server::new(
+        event_context.event_sender.clone(),
+        draw_recv,
+        graphics_context,
+        root_scene.clone(),
+    )
+    .context("unable to initialize draw server")?;
     let audio = audio::Server::new(event_context.event_sender.clone(), audio_recv);
     let update = update::Server::new(event_context.event_sender.clone(), update_recv);
 

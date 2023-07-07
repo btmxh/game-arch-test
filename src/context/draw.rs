@@ -1,14 +1,5 @@
-use crate::{
-    display::{Display, EventSender},
-    exec::{
-        dispatch::Dispatch,
-        server::{draw::Message, BaseGameServer},
-    },
-    graphics,
-    scene::main::RootScene,
-    utils::{args::args, mpsc::Receiver},
-};
-use std::{num::NonZeroU32, time::Duration};
+use crate::{display::Display, exec::dispatch::Dispatch, graphics, scene::main::RootScene};
+use std::num::NonZeroU32;
 
 use anyhow::Context;
 use trait_set::trait_set;
@@ -22,7 +13,6 @@ use winit::dpi::PhysicalSize;
 use super::common::SharedCommonContext;
 
 pub struct GraphicsContext {
-    pub base: BaseGameServer<Message>,
     pub common: SharedCommonContext,
     pub instance: Instance,
     pub adapter: Adapter,
@@ -33,13 +23,7 @@ pub struct GraphicsContext {
 }
 
 impl GraphicsContext {
-    pub async fn new(
-        event_sender: EventSender,
-        common: SharedCommonContext,
-        display: &Display,
-        receiver: Receiver<Message>,
-    ) -> anyhow::Result<Self> {
-        let base = BaseGameServer::new(event_sender, receiver);
+    pub async fn new(common: SharedCommonContext, display: &Display) -> anyhow::Result<Self> {
         let display_size = {
             let size = display.get_size();
             PhysicalSize {
@@ -52,7 +36,6 @@ impl GraphicsContext {
                 .await
                 .context("Unable to initialize wgpu objects")?;
         Ok(Self {
-            base,
             common,
             instance,
             surface,
@@ -87,21 +70,11 @@ impl GraphicsContext {
         self.reconfigure(|config| config.present_mode = swap_interval);
     }
 
-    fn process_messages(&mut self, block: bool, root_scene: &RootScene) -> anyhow::Result<()> {
-        let messages = self
-            .base
-            .receiver
-            .try_iter(block.then_some(Duration::from_millis(300)))
-            .context("thread runner channel was unexpectedly closed")?
-            .collect::<Vec<_>>();
-        for message in messages {
-            match message {
-                Message::SetFrequencyProfiling(fp) => self.base.frequency_profiling = fp,
-                Message::Execute(callback) => callback(DrawDispatchContext::new(self, root_scene)),
-            }
-        }
-
-        Ok(())
+    pub fn run_callback<F>(&mut self, callback: F, root_scene: &RootScene)
+    where
+        F: DrawDispatch,
+    {
+        callback(DrawDispatchContext::new(self, root_scene));
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>) {
@@ -111,26 +84,15 @@ impl GraphicsContext {
         });
     }
 
-    pub fn draw(
-        &mut self,
-        root_scene: &RootScene,
-        single: bool,
-        runner_frequency: f64,
-    ) -> anyhow::Result<()> {
-        let headless = args().headless;
-        for _ in 0..self.base.run("Draw", runner_frequency) {
-            self.process_messages(single && headless, root_scene)?;
-            if !headless {
-                let mut frame = self
-                    .get_frame_context()
-                    .context("Unable to retrieve frame context to render")?;
-                {
-                    let mut draw_context = DrawContext::new(self, &mut frame);
-                    root_scene.draw(&mut draw_context);
-                }
-                frame.surface_texture.present();
-            }
+    pub fn draw(&mut self, root_scene: &RootScene) -> anyhow::Result<()> {
+        let mut frame = self
+            .get_frame_context()
+            .context("Unable to retrieve frame context to render")?;
+        {
+            let mut draw_context = DrawContext::new(self, &mut frame);
+            root_scene.draw(&mut draw_context);
         }
+        frame.surface_texture.present();
         Ok(())
     }
 }

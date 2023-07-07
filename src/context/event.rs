@@ -28,7 +28,11 @@ use crate::{
     utils::mpsc,
 };
 
-use super::{common::SharedCommonContext, draw::DrawDispatchContext, update::UpdateSender};
+use super::{
+    common::SharedCommonContext,
+    draw::{DrawDispatchContext, GraphicsContext},
+    update::UpdateSender,
+};
 
 pub struct EventContext {
     pub common: SharedCommonContext,
@@ -148,6 +152,10 @@ impl EventContext {
                 }
             };
         })
+    }
+
+    pub(crate) fn create_graphics_context(&self) -> anyhow::Result<GraphicsContext> {
+        pollster::block_on(GraphicsContext::new(self.common.clone(), &self.display))
     }
 }
 

@@ -77,16 +77,38 @@ impl Scene {
     }
 
     fn toggle(&self, context: &EventDispatchContext) -> anyhow::Result<()> {
-        let current_vsync = !self.current_vsync.load(Ordering::Relaxed);
-        self.current_vsync.store(current_vsync, Ordering::Relaxed);
-        let interval = if current_vsync {
-            PresentMode::AutoVsync
-        } else {
-            PresentMode::AutoNoVsync
-        };
+        let vsync = self.current_vsync.fetch_xor(true, Ordering::Relaxed);
         context.event.draw_sender.execute(move |context| {
-            context.graphics.set_swap_interval(interval);
-            tracing::info!("VSync swap interval set to {interval:?}");
+            if let Some(surface_context) = context.graphics.surface_context.as_mut() {
+                let supported_present_modes = surface_context.surface.get_capabilities(&context.graphics.adapter).present_modes;
+                surface_context.config.present_mode = match vsync {
+                    true => {
+                        if supported_present_modes.contains(&PresentMode::FifoRelaxed) {
+                            PresentMode::FifoRelaxed
+                        } else {
+                            PresentMode::Fifo
+                        }
+                    }
+
+                    false => {
+                        if supported_present_modes.contains(&PresentMode::Immediate) {
+                            PresentMode::Immediate
+                        } else {
+                            tracing::warn!("Immediate present mode not supported. Considering running the draw server on a separate runner thread ");
+                            if supported_present_modes.contains(&PresentMode::Mailbox) {
+                                PresentMode::Mailbox
+                            } else {
+                                tracing::error!("Immediate/Mailbox present modes not supported. Falling back to Fifo (VSync on)");
+                                PresentMode::Fifo
+                            }
+                        }
+                    }
+                };
+                tracing::info!("VSync set to {}, present mode {:?}", vsync, surface_context.config.present_mode);
+                surface_context.configure(&context.graphics.device);
+            } else {
+                tracing::warn!("Attempting to set vsync to {vsync} while surface is not present");
+            }
         })?;
 
         Ok(())

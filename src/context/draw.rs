@@ -9,9 +9,8 @@ use std::num::NonZeroU32;
 use anyhow::Context;
 use trait_set::trait_set;
 use wgpu::{
-    Adapter, CommandEncoder, Device, Instance, PresentMode, Queue, RenderPass,
-    RenderPassColorAttachment, RenderPassDescriptor, SurfaceConfiguration, SurfaceTexture,
-    TextureView,
+    Adapter, CommandEncoder, Device, Instance, Queue, RenderPass, RenderPassColorAttachment,
+    RenderPassDescriptor, SurfaceTexture, TextureView,
 };
 use winit::dpi::PhysicalSize;
 
@@ -42,18 +41,6 @@ impl GraphicsContext {
         })
     }
 
-    fn reconfigure<F>(&mut self, func: F)
-    where
-        F: FnOnce(&mut SurfaceConfiguration),
-    {
-        if let Some(context) = self.surface_context.as_mut() {
-            func(&mut context.config);
-            context.configure(&self.device);
-        } else if !args().headless {
-            tracing::warn!("reconfiguring surface while surface is not present");
-        }
-    }
-
     fn get_frame_context(&self) -> anyhow::Result<Option<FrameContext>> {
         self.surface_context
             .as_ref()
@@ -69,10 +56,6 @@ impl GraphicsContext {
             .transpose()
     }
 
-    pub fn set_swap_interval(&mut self, swap_interval: PresentMode) {
-        self.reconfigure(|config| config.present_mode = swap_interval);
-    }
-
     pub fn run_callback<F>(&mut self, callback: F, root_scene: &RootScene)
     where
         F: DrawDispatch,
@@ -81,10 +64,13 @@ impl GraphicsContext {
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<NonZeroU32>) {
-        self.reconfigure(|config| {
-            config.width = new_size.width.get();
-            config.height = new_size.height.get();
-        });
+        if let Some(context) = self.surface_context.as_mut() {
+            context.config.width = new_size.width.get();
+            context.config.height = new_size.height.get();
+            context.configure(&self.device);
+        } else if !args().headless {
+            tracing::warn!("Attempting to resize surface while surface is not present");
+        }
     }
 
     pub fn draw(&mut self, root_scene: &RootScene) -> anyhow::Result<()> {

@@ -7,7 +7,10 @@ use winit::{
 };
 
 use crate::{
-    context::event::{EventDispatchContext, Executable},
+    context::{
+        common::HasCommonContext,
+        event::{EventDispatchContext, Executable},
+    },
     events::{GameEvent, GameUserEvent},
     utils::{args::args, error::ResultExt, mutex::Mutex},
 };
@@ -45,7 +48,7 @@ impl Scene {
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::Resized(size),
-            } if context.event.display.get_window_id() == window_id => {
+            } if context.check_window_id(&window_id) => {
                 let width = NonZeroU32::new(size.width);
                 let height = NonZeroU32::new(size.height);
                 let size = width.zip(height).map(|(w, h)| PhysicalSize::new(w, h));

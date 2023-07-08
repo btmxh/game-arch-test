@@ -5,7 +5,10 @@ use wgpu::PresentMode;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 use crate::{
-    context::{event::EventDispatchContext, init::InitContext},
+    context::{
+        common::HasCommonContext,
+        event::{EventDispatchContext, Executable},
+    },
     events::GameEvent,
     utils::error::ResultExt,
 };
@@ -15,15 +18,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new(context: &mut InitContext) -> anyhow::Result<Self> {
-        let present_modes = context
-            .graphics
-            .surface
-            .get_capabilities(&context.graphics.adapter)
-            .present_modes;
-        for present_mode in present_modes {
-            tracing::info!("Supported present mode: {:?}", present_mode);
-        }
+    pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
             current_vsync: AtomicBool::new(true),
         })
@@ -47,10 +42,30 @@ impl Scene {
                             },
                         ..
                     },
-            } if context.event.display.get_window_id() == *window_id => {
+            } if context.check_window_id(window_id) => {
                 self.toggle(context)
                     .context("unable to toggle VSync mode")
                     .log_warn();
+            }
+
+            Event::Resumed => {
+                context
+                    .execute_draw_sync(|context| {
+                        let present_modes = context
+                            .graphics
+                            .surface_context
+                            // TODO: make this more safe
+                            .as_ref()
+                            .expect("surface should be (re)created now")
+                            .surface
+                            .get_capabilities(&context.graphics.adapter)
+                            .present_modes;
+                        for present_mode in present_modes {
+                            tracing::info!("Supported present mode: {:?}", present_mode);
+                        }
+                    })
+                    .context("Unable to list present modes")
+                    .log_error();
             }
 
             _ => {}

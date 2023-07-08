@@ -3,7 +3,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Context;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
-use crate::{context::event::EventDispatchContext, events::GameEvent, utils::error::ResultExt};
+use crate::{
+    context::{common::HasCommonContext, event::EventDispatchContext},
+    events::GameEvent,
+    utils::error::ResultExt,
+};
 
 pub struct Scene {
     current_freq_profile: AtomicBool,
@@ -34,7 +38,7 @@ impl Scene {
                             },
                         ..
                     },
-            } if context.event.display.get_window_id() == *window_id => {
+            } if context.check_window_id(window_id) => {
                 self.toggle(context)
                     .context("unable to toggle frequency profile mode")
                     .log_error();

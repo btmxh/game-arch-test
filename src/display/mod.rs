@@ -66,4 +66,18 @@ impl EventSender {
             .map_err(|err| anyhow::anyhow!("{}", err))
             .context("Unable to send event to main event loop")
     }
+
+    pub fn exit_with_error<E>(&self, err: E)
+    where
+        E: Into<anyhow::Error>,
+    {
+        tracing::error!("A fatal error occurred: {:#?}", err.into());
+        if let Err(err) = self.loop_proxy.send_event(GameUserEvent::Exit(1)) {
+            tracing::error!(
+                "Unable to send exit message to event loop, falling-back to process::exit: {:#?}",
+                err
+            );
+            std::process::exit(1);
+        }
+    }
 }

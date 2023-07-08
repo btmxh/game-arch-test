@@ -1,11 +1,16 @@
-use crate::{display::Display, exec::dispatch::Dispatch, graphics, scene::main::RootScene};
+use crate::{
+    exec::dispatch::Dispatch,
+    graphics::{self, SurfaceContext},
+    scene::main::RootScene,
+    utils::args::args,
+};
 use std::num::NonZeroU32;
 
 use anyhow::Context;
 use trait_set::trait_set;
 use wgpu::{
     Adapter, CommandEncoder, Device, Instance, PresentMode, Queue, RenderPass,
-    RenderPassColorAttachment, RenderPassDescriptor, Surface, SurfaceConfiguration, SurfaceTexture,
+    RenderPassColorAttachment, RenderPassDescriptor, SurfaceConfiguration, SurfaceTexture,
     TextureView,
 };
 use winit::dpi::PhysicalSize;
@@ -16,33 +21,24 @@ pub struct GraphicsContext {
     pub common: SharedCommonContext,
     pub instance: Instance,
     pub adapter: Adapter,
-    pub surface: Surface,
+    pub surface_context: Option<SurfaceContext>,
     pub device: Device,
     pub queue: Queue,
-    pub surface_configuration: SurfaceConfiguration,
 }
 
 impl GraphicsContext {
-    pub async fn new(common: SharedCommonContext, display: &Display) -> anyhow::Result<Self> {
-        let display_size = {
-            let size = display.get_size();
-            PhysicalSize {
-                width: NonZeroU32::new(size.width).expect("display width is 0"),
-                height: NonZeroU32::new(size.height).expect("display height is 0"),
-            }
-        };
-        let (instance, surface, adapter, device, queue, surface_configuration) =
-            graphics::init_wgpu(display, display_size)
+    pub async fn new(common: SharedCommonContext) -> anyhow::Result<Self> {
+        let (instance, surface_context, adapter, device, queue) =
+            graphics::init_wgpu(&common.display)
                 .await
                 .context("Unable to initialize wgpu objects")?;
         Ok(Self {
             common,
             instance,
-            surface,
             adapter,
+            surface_context,
             device,
             queue,
-            surface_configuration,
         })
     }
 
@@ -50,20 +46,27 @@ impl GraphicsContext {
     where
         F: FnOnce(&mut SurfaceConfiguration),
     {
-        func(&mut self.surface_configuration);
-        self.surface
-            .configure(&self.device, &self.surface_configuration);
+        if let Some(context) = self.surface_context.as_mut() {
+            func(&mut context.config);
+            context.configure(&self.device);
+        } else if !args().headless {
+            tracing::warn!("reconfiguring surface while surface is not present");
+        }
     }
 
-    fn get_frame_context(&self) -> anyhow::Result<FrameContext> {
-        let surface_texture = self
-            .surface
-            .get_current_texture()
-            .context("Unable to retrieve current surface texture")?;
-        Ok(FrameContext {
-            surface_texture_view: surface_texture.texture.create_view(&Default::default()),
-            surface_texture,
-        })
+    fn get_frame_context(&self) -> anyhow::Result<Option<FrameContext>> {
+        self.surface_context
+            .as_ref()
+            .map(|SurfaceContext { surface, .. }| {
+                let surface_texture = surface
+                    .get_current_texture()
+                    .context("Unable to retrieve current surface texture")?;
+                Ok(FrameContext {
+                    surface_texture_view: surface_texture.texture.create_view(&Default::default()),
+                    surface_texture,
+                })
+            })
+            .transpose()
     }
 
     pub fn set_swap_interval(&mut self, swap_interval: PresentMode) {
@@ -85,15 +88,35 @@ impl GraphicsContext {
     }
 
     pub fn draw(&mut self, root_scene: &RootScene) -> anyhow::Result<()> {
-        let mut frame = self
+        if let Some(mut frame) = self
             .get_frame_context()
-            .context("Unable to retrieve frame context to render")?;
+            .context("Unable to retrieve frame context to render")?
         {
-            let mut draw_context = DrawContext::new(self, &mut frame);
-            root_scene.draw(&mut draw_context);
+            {
+                let mut draw_context = DrawContext::new(self, &mut frame);
+                root_scene.draw(&mut draw_context);
+            }
+            frame.surface_texture.present();
         }
-        frame.surface_texture.present();
+
         Ok(())
+    }
+
+    pub fn create_surface(&mut self) -> anyhow::Result<()> {
+        self.surface_context = Some(
+            SurfaceContext::new(
+                self.common.display.get_winit_window(),
+                &self.instance,
+                &self.adapter,
+                &self.device,
+            )
+            .context("Unable to create surface")?,
+        );
+        Ok(())
+    }
+
+    pub fn destroy_surface(&mut self) {
+        self.surface_context.take();
     }
 }
 

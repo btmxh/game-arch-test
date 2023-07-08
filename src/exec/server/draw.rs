@@ -28,11 +28,10 @@ impl GameServer for Server {
         let headless = args().headless;
         for _ in 0..self.base.run("Draw", runner_frequency) {
             self.process_messages(single && headless)?;
-            if !headless {
-                self.context
-                    .draw(&self.root_scene)
-                    .context("error while drawing frame")?;
-            }
+            // no need for headless checks, since headless run will have no surface to render to
+            self.context
+                .draw(&self.root_scene)
+                .context("error while drawing frame")?;
         }
         Ok(())
     }

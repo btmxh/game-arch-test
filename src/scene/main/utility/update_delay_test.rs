@@ -5,7 +5,7 @@ use rand::{thread_rng, Rng};
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 use crate::{
-    context::event::EventDispatchContext,
+    context::{common::HasCommonContext, event::EventDispatchContext},
     events::GameEvent,
     utils::{clock::debug_get_time, error::ResultExt, mutex::Mutex},
 };
@@ -65,7 +65,7 @@ impl Scene {
                             },
                         ..
                     },
-            } if context.event.display.get_window_id() == *window_id => {
+            } if context.check_window_id(window_id) => {
                 self.test(context)
                     .context("error while doing update delay test")
                     .log_error();

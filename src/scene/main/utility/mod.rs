@@ -1,9 +1,6 @@
 use anyhow::Context;
 
-use crate::{
-    context::{event::EventDispatchContext, init::InitContext},
-    events::GameEvent,
-};
+use crate::{context::event::EventDispatchContext, events::GameEvent};
 pub mod close;
 pub mod freq_profile;
 pub mod update_delay_test;
@@ -17,9 +14,9 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new(context: &mut InitContext) -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
-            vsync: vsync::Scene::new(context).context("unable to initialize VSync scene")?,
+            vsync: vsync::Scene::new().context("unable to initialize VSync scene")?,
             freq_profile: freq_profile::Scene::new(),
             update_delay_test: update_delay_test::Scene::new(),
             close: close::Scene,

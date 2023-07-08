@@ -2,7 +2,10 @@ use anyhow::Context;
 use winit::event::Event;
 
 use crate::{
-    context::event::{EventDispatchContext, Executable},
+    context::{
+        common::HasCommonContext,
+        event::{EventDispatchContext, Executable},
+    },
     events::GameEvent,
     utils::{args::args, error::ResultExt},
 };
@@ -16,9 +19,7 @@ impl Scene {
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         match event {
-            Event::RedrawRequested(window_id)
-                if context.event.display.get_window_id() == window_id =>
-            {
+            Event::RedrawRequested(window_id) if context.check_window_id(&window_id) => {
                 if args().block_event_loop {
                     // somewhat hacky way of waiting a buffer swap
                     if context.executor.main_runner.base.container.draw.is_some() {

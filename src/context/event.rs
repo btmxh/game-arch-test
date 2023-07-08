@@ -15,15 +15,10 @@ use std::{
 };
 
 use anyhow::Context;
-use winit::{
-    dpi::PhysicalSize,
-    event::Event,
-    event_loop::{EventLoop, EventLoopBuilder},
-};
+use winit::{event::Event, event_loop::EventLoop};
 
 use crate::{
     context::draw::DrawDispatch,
-    display::Display,
     events::{GameEvent, GameUserEvent},
     utils::mpsc,
 };
@@ -41,24 +36,20 @@ pub struct EventContext {
     pub audio_sender: Sender<audio::Message>,
     pub draw_sender: Sender<draw::Message>,
     pub update_sender: UpdateSender,
-    pub display: Display,
 }
 
 impl EventContext {
     #[allow(clippy::type_complexity)]
     pub fn new(
         common: SharedCommonContext,
+        event_loop: &EventLoop<GameUserEvent>,
     ) -> anyhow::Result<(
         Self,
-        EventLoop<GameUserEvent>,
         mpsc::Receiver<draw::Message>,
         mpsc::Receiver<audio::Message>,
         mpsc::Receiver<update::Message>,
     )> {
-        let event_loop = EventLoopBuilder::with_user_event().build();
-        let event_sender = EventSender::new(&event_loop);
-        let display = Display::new(&event_loop, PhysicalSize::new(1280, 720), "hello")
-            .context("Unable to create display")?;
+        let event_sender = EventSender::new(event_loop);
         let (draw_sender, draw_receiver) = mpsc::channels();
         let (audio_sender, audio_receiver) = mpsc::channels();
         let (mut update_sender, update_receiver) = UpdateSender::new();
@@ -68,13 +59,11 @@ impl EventContext {
                 common,
                 test_manager: TestManager::new_if_enabled(&mut update_sender, &event_sender)
                     .context("unable to create test manager")?,
-                display,
                 event_sender,
                 audio_sender,
                 draw_sender,
                 update_sender,
             },
-            event_loop,
             draw_receiver,
             audio_receiver,
             update_receiver,
@@ -155,7 +144,7 @@ impl EventContext {
     }
 
     pub(crate) fn create_graphics_context(&self) -> anyhow::Result<GraphicsContext> {
-        pollster::block_on(GraphicsContext::new(self.common.clone(), &self.display))
+        pollster::block_on(GraphicsContext::new(self.common.clone()))
     }
 }
 

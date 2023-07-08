@@ -35,7 +35,7 @@ impl RootScene {
                 .transpose()
                 .context("unable to initialize test scene")?,
             _content: args().test.not().then(content::Scene::new),
-            utility: utility::Scene::new(context).context("unable to initialize utility scene")?,
+            utility: utility::Scene::new().context("unable to initialize utility scene")?,
         }))
     }
 

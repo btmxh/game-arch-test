@@ -3,12 +3,14 @@ use crate::{
     events::GameEvent,
 };
 
-pub mod clear;
-pub mod redraw;
+mod clear;
+mod redraw;
+mod surface_creation;
 
 pub struct Scene {
     redraw: redraw::Scene,
     clear: clear::Scene,
+    surface_creation: surface_creation::Scene,
 }
 
 impl Scene {
@@ -16,6 +18,7 @@ impl Scene {
         Ok(Self {
             redraw: redraw::Scene,
             clear: clear::Scene,
+            surface_creation: surface_creation::Scene,
         })
     }
 
@@ -25,6 +28,7 @@ impl Scene {
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
         let event = self.redraw.handle_event(context, event)?;
+        let event = self.surface_creation.handle_event(context, event)?;
         Some(event)
     }
 

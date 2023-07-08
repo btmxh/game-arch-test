@@ -11,6 +11,7 @@ use exec::{
 };
 use scene::main::RootScene;
 use utils::log::init_log;
+use winit::event_loop::EventLoopBuilder;
 
 mod context;
 mod display;
@@ -23,9 +24,12 @@ mod utils;
 
 fn main() -> anyhow::Result<()> {
     let _guard = init_log()?;
-    let common_context = CommonContext::new();
-    let (mut event_context, event_loop, draw_recv, audio_recv, update_recv) =
-        EventContext::new(common_context).context("Unable to initialize EventContext")?;
+    let event_loop = EventLoopBuilder::with_user_event().build();
+    let common_context =
+        CommonContext::new(&event_loop).context("Unable to initialize CommonContext")?;
+    let (mut event_context, draw_recv, audio_recv, update_recv) =
+        EventContext::new(common_context, &event_loop)
+            .context("Unable to initialize EventContext")?;
     let mut graphics_context: GraphicsContext = event_context
         .create_graphics_context()
         .context("Unable to create graphics context")?;

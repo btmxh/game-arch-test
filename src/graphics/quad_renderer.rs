@@ -85,7 +85,12 @@ impl QuadRenderer {
                     module: &shader,
                     entry_point: "fs_main",
                     targets: &[Some(ColorTargetState {
-                        format: context.surface_configuration.format,
+                        format: context
+                            .surface_context
+                            .as_ref()
+                            .expect("TODO: make this work")
+                            .config
+                            .format,
                         blend: Some(BlendState::ALPHA_BLENDING),
                         write_mask: ColorWrites::ALL,
                     })],

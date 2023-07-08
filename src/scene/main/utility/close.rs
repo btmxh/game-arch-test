@@ -2,7 +2,7 @@ use anyhow::Context;
 use winit::event::{Event, WindowEvent};
 
 use crate::{
-    context::event::EventDispatchContext,
+    context::{common::HasCommonContext, event::EventDispatchContext},
     events::{GameEvent, GameUserEvent},
     utils::error::ResultExt,
 };
@@ -18,7 +18,7 @@ impl Scene {
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::CloseRequested,
-            } if context.event.display.get_window_id() == *window_id => {
+            } if context.check_window_id(window_id) => {
                 context
                     .event
                     .event_sender

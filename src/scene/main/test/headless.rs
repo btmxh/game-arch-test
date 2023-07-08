@@ -51,6 +51,7 @@ impl Scene {
         assert_false(
             context
                 .event
+                .common
                 .display
                 .get_winit_window()
                 .is_visible()

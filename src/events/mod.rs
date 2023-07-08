@@ -12,9 +12,7 @@ pub type GameEvent<'a> = winit::event::Event<'a, GameUserEvent>;
 #[derivative(Debug)]
 pub enum GameUserEvent {
     Exit(i32),
+    ExitError(anyhow::Error),
     UpdateDispatch(TimeoutDispatchHandleSet),
     CheckedResize(PhysicalSize<NonZeroU32>),
 }
-
-#[derive(Debug)]
-pub enum ExecuteReturnEvent {}

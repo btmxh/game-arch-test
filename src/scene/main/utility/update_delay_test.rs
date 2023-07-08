@@ -2,7 +2,10 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use rand::{thread_rng, Rng};
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use winit::{
+    event::{ElementState, Event, KeyEvent, WindowEvent},
+    keyboard::KeyCode,
+};
 
 use crate::{
     context::{common::HasCommonContext, event::EventDispatchContext},
@@ -57,10 +60,10 @@ impl Scene {
                 window_id,
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
                                 state: ElementState::Released,
-                                virtual_keycode: Some(VirtualKeyCode::R),
+                                physical_key: KeyCode::KeyR,
                                 ..
                             },
                         ..

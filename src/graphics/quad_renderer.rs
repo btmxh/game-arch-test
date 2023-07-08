@@ -6,7 +6,7 @@ use wgpu::{
     BindGroupLayoutEntry, BindingType, BlendState, ColorTargetState, ColorWrites, CommandEncoder,
     Face, FragmentState, FrontFace, MultisampleState, PipelineLayoutDescriptor, PolygonMode,
     PrimitiveState, PrimitiveTopology, PushConstantRange, RenderPipeline, RenderPipelineDescriptor,
-    Sampler, SamplerBindingType, ShaderStages, TextureSampleType, TextureView,
+    Sampler, SamplerBindingType, ShaderStages, TextureFormat, TextureSampleType, TextureView,
     TextureViewDimension, VertexState,
 };
 
@@ -32,7 +32,7 @@ impl QuadRenderer {
     pub const FULL_TEXTURE_TEX_BOUNDS: [Vec2; 2] = [Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0)];
     pub const MAX_PUSH_CONSTANT_SIZE: usize = std::mem::size_of::<QuadPushConstants>();
 
-    pub fn new(context: &GraphicsContext) -> anyhow::Result<Self> {
+    pub fn new(context: &GraphicsContext, target_format: TextureFormat) -> anyhow::Result<Self> {
         let shader = context
             .device
             .create_shader_module(wgpu::include_wgsl!("quad.wgsl"));
@@ -85,12 +85,7 @@ impl QuadRenderer {
                     module: &shader,
                     entry_point: "fs_main",
                     targets: &[Some(ColorTargetState {
-                        format: context
-                            .surface_context
-                            .as_ref()
-                            .expect("TODO: make this work")
-                            .config
-                            .format,
+                        format: target_format,
                         blend: Some(BlendState::ALPHA_BLENDING),
                         write_mask: ColorWrites::ALL,
                     })],

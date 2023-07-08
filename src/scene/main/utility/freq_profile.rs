@@ -1,7 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Context;
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use winit::{
+    event::{ElementState, Event, KeyEvent, WindowEvent},
+    keyboard::KeyCode,
+};
 
 use crate::{
     context::{common::HasCommonContext, event::EventDispatchContext},
@@ -30,10 +33,10 @@ impl Scene {
                 window_id,
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
                                 state: ElementState::Released,
-                                virtual_keycode: Some(VirtualKeyCode::Q),
+                                physical_key: KeyCode::KeyQ,
                                 ..
                             },
                         ..

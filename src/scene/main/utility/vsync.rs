@@ -2,7 +2,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Context;
 use wgpu::PresentMode;
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use winit::{
+    event::{ElementState, Event, KeyEvent, WindowEvent},
+    keyboard::KeyCode,
+};
 
 use crate::{
     context::{
@@ -10,6 +13,7 @@ use crate::{
         event::{EventDispatchContext, Executable},
     },
     events::GameEvent,
+    graphics::SurfaceContext,
     utils::error::ResultExt,
 };
 
@@ -34,10 +38,10 @@ impl Scene {
                 window_id,
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
                                 state: ElementState::Released,
-                                virtual_keycode: Some(VirtualKeyCode::E),
+                                physical_key: KeyCode::KeyE,
                                 ..
                             },
                         ..
@@ -50,18 +54,16 @@ impl Scene {
 
             Event::Resumed => {
                 context
-                    .execute_draw_sync(|context| {
-                        let present_modes = context
-                            .graphics
-                            .surface_context
-                            // TODO: make this more safe
-                            .as_ref()
-                            .expect("surface should be (re)created now")
-                            .surface
-                            .get_capabilities(&context.graphics.adapter)
-                            .present_modes;
-                        for present_mode in present_modes {
-                            tracing::info!("Supported present mode: {:?}", present_mode);
+                    .execute_draw(|context| {
+                        if let Some(SurfaceContext { surface, .. }) =
+                            context.graphics.surface_context.as_ref()
+                        {
+                            for present_mode in surface
+                                .get_capabilities(&context.graphics.adapter)
+                                .present_modes
+                            {
+                                tracing::info!("Supported present mode: {:?}", present_mode);
+                            }
                         }
                     })
                     .context("Unable to list present modes")

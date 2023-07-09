@@ -38,7 +38,7 @@ jobs:
       - name: Setup OpenGL, Xvfb and test glxinfo
         run: |
           sudo apt-get update
-          sudo apt-get install -y mesa-utils xvfb libxkbcommon-dev
+          sudo apt-get install -y mesa-utils xvfb libxkbcommon-x11-dev
           xvfb-run glxinfo
       - name: Run the program in test mode
         run: xvfb-run cargo run -- --test --headless --auto-run-tests

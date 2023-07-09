@@ -2,6 +2,12 @@ use std::time::Duration;
 
 use flume::TryRecvError;
 
+#[cfg(debug_assertions)]
+pub const DEFAULT_RECV_TIMEOUT: Duration = crate::utils::ONE_YEAR;
+
+#[cfg(not(debug_assertions))]
+pub const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_millis(300);
+
 pub struct Receiver<T>(flume::Receiver<T>);
 pub struct Sender<T>(flume::Sender<T>);
 

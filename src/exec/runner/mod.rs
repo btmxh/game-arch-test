@@ -7,16 +7,13 @@ use anyhow::Context;
 
 use crate::utils::{
     clock::SteadyClock,
-    mpsc,
+    mpsc::{self, DEFAULT_RECV_TIMEOUT},
     sync::{ClockSync, OFClockSync},
 };
 
 use self::container::ServerContainer;
 
-use super::{
-    server::{SendGameServer, ServerKind},
-    DEFAULT_RECV_TIMEOUT,
-};
+use super::server::{SendGameServer, ServerKind};
 
 pub mod container;
 

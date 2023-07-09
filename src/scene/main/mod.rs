@@ -74,11 +74,11 @@ macro_rules! draw_option {
 
 #[macro_export]
 macro_rules! handle_event_option {
-    ($scene: expr, $($args: expr),*) => {
-        let event = if let Some(scene) = $scene.as_ref() {
-            scene.handle_event($($args)*)?
+    ($scene: expr, $event: ident, $($args: expr),*) => {
+        let $event = if let Some(scene) = $scene.as_ref() {
+            scene.handle_event($($args)*, $event)?
         } else {
-            event
-        }
+            $event
+        };
     };
 }

@@ -3,7 +3,7 @@ use anyhow::Context;
 use crate::{
     context::event::{EventDispatchContext, Executable},
     events::GameEvent,
-    utils::error::ResultExt,
+    utils::{args::args, error::ResultExt},
 };
 
 pub struct Scene;
@@ -13,6 +13,10 @@ impl Scene {
         context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
+        if !args().headless {
+            return Some(event);
+        }
+
         match &event {
             GameEvent::Resumed => {
                 let execution_result = context
@@ -42,5 +46,9 @@ impl Scene {
         };
 
         Some(event)
+    }
+
+    pub fn new() -> Option<Self> {
+        args().headless.then_some(Self)
     }
 }

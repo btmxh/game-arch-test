@@ -6,8 +6,6 @@ use wgpu::{
 };
 use winit::window::Window;
 
-use crate::{display::Display, utils::args::args};
-
 use self::quad_renderer::QuadRenderer;
 
 pub mod quad_renderer;
@@ -58,23 +56,15 @@ impl SurfaceContext {
     }
 }
 
-pub async fn init_wgpu(
-    display: &Display,
-) -> anyhow::Result<(Instance, Option<SurfaceContext>, Adapter, Device, Queue)> {
+pub async fn init_wgpu() -> anyhow::Result<(Instance, Adapter, Device, Queue)> {
     let instance = Instance::new(InstanceDescriptor {
         backends: Backends::all(),
         ..Default::default()
     });
-
-    let surface = args()
-        .headless
-        .then(|| unsafe { instance.create_surface(display.get_winit_window()) })
-        .transpose()
-        .context("Unable to create window surface")?;
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
             power_preference: PowerPreference::default(),
-            compatible_surface: surface.as_ref(),
+            compatible_surface: None,
             force_fallback_adapter: false,
         })
         .await
@@ -94,5 +84,5 @@ pub async fn init_wgpu(
         )
         .await
         .context("Unable to request wgpu device")?;
-    Ok((instance, None, adapter, device, queue))
+    Ok((instance, adapter, device, queue))
 }

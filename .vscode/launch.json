@@ -25,20 +25,22 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'game-arch-test'",
+            "name": "Debug tests in executable 'game-arch-test'",
             "cargo": {
                 "args": [
-                    "test",
-                    "--no-run",
+                    "build",
                     "--bin=game-arch-test",
-                    "--package=game-arch-test"
+                    "--package=game-arch-test",
                 ],
                 "filter": {
                     "name": "game-arch-test",
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "--test",
+                "--headless",
+            ],
             "cwd": "${workspaceFolder}/target"
         }
     ]

@@ -1,3 +1,5 @@
+use std::ops::Not;
+
 use anyhow::Context;
 
 use crate::{
@@ -49,6 +51,6 @@ impl Scene {
     }
 
     pub fn new() -> Option<Self> {
-        args().headless.then_some(Self)
+        args().headless.not().then_some(Self)
     }
 }

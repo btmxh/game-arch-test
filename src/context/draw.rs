@@ -27,15 +27,14 @@ pub struct GraphicsContext {
 
 impl GraphicsContext {
     pub async fn new(common: SharedCommonContext) -> anyhow::Result<Self> {
-        let (instance, surface_context, adapter, device, queue) =
-            graphics::init_wgpu(&common.display)
-                .await
-                .context("Unable to initialize wgpu objects")?;
+        let (instance, adapter, device, queue) = graphics::init_wgpu()
+            .await
+            .context("Unable to initialize wgpu objects")?;
         Ok(Self {
             common,
             instance,
             adapter,
-            surface_context,
+            surface_context: None,
             device,
             queue,
         })
@@ -79,7 +78,7 @@ impl GraphicsContext {
             .context("Unable to retrieve frame context to render")?
         {
             {
-                let mut draw_context = DrawContext::new(self, &mut frame);
+                let mut draw_context: DrawContext<'_> = DrawContext::new(self, &mut frame);
                 root_scene.draw(&mut draw_context);
             }
             frame.surface_texture.present();

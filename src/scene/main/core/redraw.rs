@@ -18,6 +18,9 @@ impl Scene {
         context: &mut EventDispatchContext,
         event: GameEvent<'a>,
     ) -> Option<GameEvent<'a>> {
+        if args().headless {
+            return Some(event);
+        }
         match event {
             Event::RedrawRequested(window_id) if context.check_window_id(&window_id) => {
                 if args().block_event_loop {
